@@ -1,0 +1,14 @@
+{
+  "schema": "math-simple-layout/1",
+  "example_only": true,
+  "usage": "A page from the generated layout.json can contain the blocks below; do not use this file directly as a full manifest.",
+  "page": 1,
+  "verified": false,
+  "blocks": [
+    {"type": "title", "text": "第 7 讲：相似的证明与计算 1"},
+    {"type": "heading", "text": "【例题 1】位似"},
+    {"type": "question", "text": "1．如图，……"},
+    {"type": "image", "bbox": [70, 170, 310, 330]},
+    {"type": "subquestion", "text": "（1）求证：……"}
+  ]
+}
