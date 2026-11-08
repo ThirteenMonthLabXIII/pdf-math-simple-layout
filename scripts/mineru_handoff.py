@@ -4,6 +4,7 @@ import argparse, hashlib, json, shutil, sys
 from pathlib import Path
 import pymupdf
 from docx import Document
+from docx_layout_check import evaluate_layout_review, inspect_docx
 
 for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"): stream.reconfigure(encoding="utf-8", errors="replace")
@@ -43,6 +44,8 @@ def prepare(args):
     save(ws/"mineru_review.json",{"candidate_sha256":"","word_preview_checked":False,
         "pages":[{"pdf_page":i,"content_checked":False,"formulas_checked":False,"figures_checked":False}
                  for i in range(1,total+1)]})
+    save(ws/"layout_review.json",{"schema":"docx-layout-review/1","candidate_sha256":"",
+        "checked":False,"reviewer":"","findings":[]})
     print(json.dumps({"status":"ready_for_codex_formatting","workspace":str(ws),
         "working_docx":str(ws/"working.docx"),"source_pages":total,"mineru_stats":s},ensure_ascii=False))
 
@@ -55,17 +58,22 @@ def audit(args):
     checked=(len(r.get("pages",[]))==m["source_pages"] and
              all(p.get("content_checked") is True and p.get("formulas_checked") is True
                  and p.get("figures_checked") is True for p in r.get("pages",[])))
+    layout_report=inspect_docx(doc)
+    save(ws/"docx_layout_findings.json",layout_report)
+    layout_review=evaluate_layout_review(doc,ws/"layout_review.json",layout_report)
     checks={"source_unchanged":sha(Path(m["source_pdf"]))==m["source_sha256"],
         "mineru_raw_unchanged":sha(ws/"mineru_original.docx")==m["raw_sha256"],
         "editable_text_present":s["chars"]>10,
         "current_document_reviewed":r.get("candidate_sha256")==sha(doc),
         "word_preview_checked":r.get("word_preview_checked") is True,
-        "all_pdf_pages_reviewed":checked}
+        "all_pdf_pages_reviewed":checked,
+        "docx_layout_review_complete":layout_review["complete"]}
     warnings=[]
     if s["images"]==0: warnings.append("No images in Word: check geometry drawings")
     if s["chars"]<m["raw_stats"]["chars"]//2: warnings.append("Over 50% of MinerU text missing")
     status="accepted" if all(checks.values()) and not warnings else "needs_review"
-    report={"status":status,"checks":checks,"warnings":warnings,"docx_stats":s}
+    report={"status":status,"checks":checks,"warnings":warnings,"docx_stats":s,
+        "docx_layout_findings":layout_report["findings"],"docx_layout_review":layout_review}
     save(ws/"mineru_audit.json",report)
     print(json.dumps(report,ensure_ascii=False))
     if args.require_accepted and status!="accepted": sys.exit(2)

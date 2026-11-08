@@ -35,6 +35,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
+from docx_layout_check import evaluate_layout_review, inspect_docx
 
 SCHEMA = "math-simple-layout/1"
 TEXT_TYPES = {"title", "heading", "paragraph", "question", "subquestion", "math"}
@@ -191,6 +192,8 @@ def cmd_prepare(args):
     review = {"schema": SCHEMA, "source_sha256": info["source_sha256"], "candidate_sha256": None,
               "reviewer": "", "pages": [{"page": v["page"], "source_checked": False, "output_checked": False, "text_math_checked": False, "figures_checked": False, "notes": ""} for v in info["pages"]]}
     save(out / "visual_review.json", review)
+    save(out / "layout_review.json", {"schema": "docx-layout-review/1", "candidate_sha256": "",
+         "checked": False, "reviewer": "", "findings": []})
     print(json.dumps({"workspace": str(out), "layout": str(manifest_path), "pages": len(info["pages"]),
                       "scan_pages": sum(v["scanned"] for v in info["pages"]), "next": "recognize --workspace; revise layout.json; build --workspace; render; audit"}, ensure_ascii=False))
 
@@ -439,14 +442,18 @@ def cmd_audit(args):
     if review.get("candidate_sha256") != expected_hash:
         checked=[]
     review_complete=len(checked)==data["page_count"] and bool(review.get("reviewer"))
+    docx_layout = inspect_docx(output)
+    save(ws / "docx_layout_findings.json", docx_layout)
+    layout_review = evaluate_layout_review(output, ws / "layout_review.json", docx_layout)
     source_unchanged=sha256(Path(data["source_pdf"]))==data["source_sha256"]
     checks={"source_unchanged":source_unchanged,"all_pages_have_content":not bad_layout,"all_source_pages_verified":not unverified,
             "all_expected_text_present":not missing,"all_table_values_present":not missing_tables,"figure_count_matches":exp_images==actual_images,
-            "visual_review_complete":review_complete}
+            "visual_review_complete":review_complete,"docx_layout_review_complete":layout_review["complete"]}
     ready=all(checks.values())
     report={"schema":SCHEMA,"status":"accepted" if ready else "needs_review","checks":checks,"page_count":data["page_count"],
             "unverified_pages":unverified,"missing_text_blocks":missing[:50],"missing_table_values":missing_tables[:50],
             "expected_figures":exp_images,"actual_figures":actual_images,"layout_errors":bad_layout,"visually_checked_pages":checked,
+            "docx_layout_findings":docx_layout["findings"],"docx_layout_review":layout_review,
             "source_sha256":data["source_sha256"],"candidate_sha256":expected_hash,"candidate":str(output)}
     save(ws/"audit_report.json",report)
     print(json.dumps({"report":str(ws/"audit_report.json"),"status":report["status"],"checks":checks,"layout_errors":bad_layout[:4]},ensure_ascii=False))

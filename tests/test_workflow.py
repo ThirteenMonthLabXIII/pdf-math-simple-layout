@@ -54,6 +54,16 @@ class WorkflowTest(unittest.TestCase):
                 row[key]=True
         c.save(self.ws/'visual_review.json',review)
         c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None)))
+        report=c.load(self.ws/'audit_report.json')
+        self.assertEqual(report['status'],'needs_review')
+        self.assertFalse(report['checks']['docx_layout_review_complete'])
+        layout_review=c.load(self.ws/'layout_review.json')
+        layout_review['candidate_sha256']=c.sha256(output)
+        layout_review['checked']=True
+        layout_review['reviewer']='Tester'
+        layout_review['findings']=[]
+        c.save(self.ws/'layout_review.json',layout_review)
+        c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None)))
         self.assertEqual(c.load(self.ws/'audit_report.json')['status'],'accepted')
 
     def test_preflight_does_not_modify_source(self):

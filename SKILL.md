@@ -40,6 +40,25 @@ Compare all source PDF pages with all actual output Word pages. Record the revie
 
 Only deliver when audit status is accepted **and** the actual page/figure/math review has been performed. After editing the Word file again, the old review hash is invalid.
 
+## Mandatory Word paragraph-layout regression check
+
+Run this check after the final Word edit on **both** the MinerU-first and RapidOCR fallback routes:
+
+~~~powershell
+python scripts\docx_layout_check.py check --docx "job1\working.docx" --output "job1\docx_layout_findings.json"
+python scripts\docx_layout_check.py template --docx "job1\working.docx" --output "job1\layout_review.json"
+~~~
+
+The scanner flags direct paragraph properties that commonly create invisible layout defects:
+
+- Left/right/first-line/hanging indentation above 1000 twips (50 pt). Math paragraphs containing `m:oMath` / `m:oMathPara` receive a dedicated `formula_paragraph_indent` finding. A 1687-twip left indent can push a formula far to the right and leave a large blank region on the left.
+- Paragraph before/after spacing above 720 twips (36 pt).
+- Three or more consecutive spaces inside answer parentheses, such as `（    ）` or `(    )`.
+
+Compare each finding with the source PDF and neighbouring questions before changing it. A 600-twip nested-question indent may be correct; do not zero all indents or normalize every formula to the same alignment. Do not bulk-delete empty paragraphs. Gray dots, return arrows and tab arrows in Word are usually nonprinting formatting marks; hide formatting marks or inspect the exported PDF before deciding whether a real character exists.
+
+After correcting findings, save the DOCX and rerun both commands. The generated `layout_review.json` is bound to the candidate SHA-256. Set `checked=true` and provide a reviewer. Any remaining intentional finding must include `disposition="intentional"`, a reason, and `source_pdf_checked=true`. A corrected finding should disappear from the new scan. Both MinerU and RapidOCR audit commands require this review file; a later DOCX edit invalidates it.
+
 ## Fallback: local RapidOCR
 
 Only if MinerU is unavailable or DOCX export fails. Do not repeat OCR after a valid MinerU output.

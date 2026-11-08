@@ -1,5 +1,6 @@
 """MinerU handoff test with generated synthetic assets (no private documents)."""
 import json
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -47,6 +48,30 @@ class MinerUHandoffTest(unittest.TestCase):
             self.assertEqual(report["status"], "needs_review")
             self.assertTrue(report["checks"]["source_unchanged"])
             self.assertFalse(report["checks"]["all_pdf_pages_reviewed"])
+            self.assertFalse(report["checks"]["docx_layout_review_complete"])
+
+            candidate_hash = hashlib.sha256((workspace / "working.docx").read_bytes()).hexdigest()
+            mineru_review = json.loads((workspace / "mineru_review.json").read_text("utf-8"))
+            mineru_review["candidate_sha256"] = candidate_hash
+            mineru_review["word_preview_checked"] = True
+            for page in mineru_review["pages"]:
+                page["content_checked"] = True
+                page["formulas_checked"] = True
+                page["figures_checked"] = True
+            (workspace / "mineru_review.json").write_text(json.dumps(mineru_review), encoding="utf-8")
+
+            layout_review = json.loads((workspace / "layout_review.json").read_text("utf-8"))
+            layout_review["candidate_sha256"] = candidate_hash
+            layout_review["checked"] = True
+            layout_review["reviewer"] = "Tester"
+            layout_review["findings"] = []
+            (workspace / "layout_review.json").write_text(json.dumps(layout_review), encoding="utf-8")
+
+            accepted = subprocess.run([sys.executable, str(CLI), "audit",
+                "--workspace", str(workspace), "--require-accepted"], capture_output=True, text=True)
+            self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+            final_report = json.loads((workspace / "mineru_audit.json").read_text("utf-8"))
+            self.assertEqual(final_report["status"], "accepted")
 
     @staticmethod
     def _mock_image(folder):

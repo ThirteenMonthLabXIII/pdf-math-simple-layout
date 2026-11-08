@@ -42,3 +42,22 @@
 - `figures_checked`：图形及图注对应、清晰、无截断。
 
 Word内容有修改后必须清除旧的批准记录/更新哈希重新看图，不得复制旧记录冒充验收。
+
+
+## Word paragraph-layout regression check (MinerU and RapidOCR)
+
+After the final DOCX save and before audit, run:
+
+~~~powershell
+python scripts/docx_layout_check.py check --docx "job1/working.docx" --output "job1/docx_layout_findings.json"
+python scripts/docx_layout_check.py template --docx "job1/working.docx" --output "job1/layout_review.json"
+~~~
+
+The scanner flags:
+- w:ind left/right/first-line/hanging values above 1000 twips (50 pt); formula paragraphs containing m:oMath / m:oMathPara get a dedicated finding. The regression case that motivated this check had a 1687-twip left indent that pushed a formula rightward.
+- w:spacing before/after values above 720 twips (36 pt).
+- Three or more consecutive spaces inside answer parentheses.
+
+Compare every finding with the source PDF and neighbouring questions. A 600-twip nested-question indent may be correct; do not normalize every paragraph or delete blank paragraphs in bulk. Gray dots, return arrows and tab arrows in Word are normally nonprinting formatting marks; hide them or inspect the exported PDF before treating them as real characters.
+
+After fixing issues, save and rerun both commands. layout_review.json must match the current DOCX SHA-256, have checked=true and a reviewer. Any remaining intentional finding must include disposition=intentional, a reason, and source_pdf_checked=true. Both audit routes require this review; any later DOCX edit invalidates the review hash.
