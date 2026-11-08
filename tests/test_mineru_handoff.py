@@ -9,9 +9,15 @@ from pathlib import Path
 
 import pymupdf
 from docx import Document
+from docx.oxml import parse_xml
+from docx.shared import Twips
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts" / "mineru_handoff.py"
+MATH_XML = (
+    '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">'
+    '<m:r><m:t>x</m:t></m:r></m:oMath>'
+)
 
 
 class MinerUHandoffTest(unittest.TestCase):
@@ -28,8 +34,14 @@ class MinerUHandoffTest(unittest.TestCase):
             docx_path = folder / "mineru.docx"
             d = Document()
             d.add_paragraph("Synthetic sample question 1: x + y = 3")
+            formula = d.add_paragraph()
+            formula.paragraph_format.left_indent = Twips(1687)
+            formula._p.append(parse_xml(MATH_XML))
+            answer = d.add_paragraph("答案：（    ）")
+            exact_answer_text = answer.text
             d.add_picture(self._mock_image(folder), width=__import__("docx").shared.Inches(1))
             d.save(str(docx_path))
+            raw_source_hash = hashlib.sha256(docx_path.read_bytes()).hexdigest()
             workspace = folder / "output"
 
             proc = subprocess.run([sys.executable, str(CLI), "prepare", "--pdf",
@@ -39,6 +51,18 @@ class MinerUHandoffTest(unittest.TestCase):
             self.assertTrue((workspace / "mineru_original.docx").exists())
             self.assertTrue((workspace / "working.docx").exists())
             self.assertEqual(len(list((workspace / "source_pages").glob("*.png"))), 1)
+
+            raw_doc = Document(workspace / "mineru_original.docx")
+            working_doc = Document(workspace / "working.docx")
+            self.assertEqual(hashlib.sha256((workspace / "mineru_original.docx").read_bytes()).hexdigest(), raw_source_hash)
+            self.assertEqual(raw_doc.paragraphs[1].paragraph_format.left_indent.twips, 1687)
+            self.assertIsNone(working_doc.paragraphs[1].paragraph_format.left_indent)
+            self.assertEqual(working_doc.paragraphs[1].style.name, "SIJI Formula")
+            self.assertEqual(working_doc.paragraphs[1].style.paragraph_format.left_indent.twips, 0)
+            self.assertIn("oMath", working_doc.paragraphs[1]._p.xml)
+            self.assertEqual(working_doc.paragraphs[2].text, exact_answer_text)
+            style_policy = json.loads((workspace / "style_policy.json").read_text("utf-8"))
+            self.assertFalse(style_policy["text_mutated"])
 
             result = subprocess.run([sys.executable, str(CLI), "audit",
                 "--workspace", str(workspace), "--require-accepted"],
@@ -64,7 +88,16 @@ class MinerUHandoffTest(unittest.TestCase):
             layout_review["candidate_sha256"] = candidate_hash
             layout_review["checked"] = True
             layout_review["reviewer"] = "Tester"
-            layout_review["findings"] = []
+            findings = json.loads((workspace / "docx_layout_findings.json").read_text("utf-8"))["findings"]
+            layout_review["findings"] = [
+                {
+                    "id": finding["id"],
+                    "disposition": "intentional",
+                    "reason": "Synthetic source PDF confirms the answer blank width; the original four spaces are preserved.",
+                    "source_pdf_checked": True,
+                }
+                for finding in findings
+            ]
             (workspace / "layout_review.json").write_text(json.dumps(layout_review), encoding="utf-8")
 
             accepted = subprocess.run([sys.executable, str(CLI), "audit",

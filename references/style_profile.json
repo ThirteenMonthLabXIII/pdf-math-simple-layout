@@ -17,5 +17,97 @@
   "heading_before_pt": 6,
   "heading_after_pt": 4,
   "title_after_pt": 10.0,
-  "image_max_width_cm": 14.7
+  "image_max_width_cm": 14.7,
+  "paragraph_policy": {
+    "body": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "left",
+      "space_after_pt": 7
+    },
+    "title": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "center",
+      "space_after_pt": 10,
+      "font_size_key": "title_pt",
+      "bold": true,
+      "keep_with_next": true
+    },
+    "heading": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 6,
+      "line_spacing": 1.15,
+      "alignment": "left",
+      "space_after_pt": 4,
+      "font_size_key": "heading_pt",
+      "bold": true,
+      "keep_with_next": true
+    },
+    "question": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "left",
+      "space_after_pt": 7
+    },
+    "subquestion": {
+      "left_indent_twips": 600,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "left",
+      "space_after_pt": 10
+    },
+    "formula": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "left",
+      "space_after_pt": 7,
+      "keep_together": true
+    },
+    "answer_blank": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "left",
+      "space_after_pt": 7
+    },
+    "caption": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "center",
+      "space_after_pt": 4
+    },
+    "figure": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "center",
+      "space_after_pt": 4,
+      "keep_together": true
+    }
+  },
+  "paragraph_policy_source": "safe_defaults; override with layout_cli.py profile --sample teacher-reference.docx"
 }

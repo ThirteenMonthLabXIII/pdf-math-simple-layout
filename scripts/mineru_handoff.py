@@ -5,6 +5,7 @@ from pathlib import Path
 import pymupdf
 from docx import Document
 from docx_layout_check import evaluate_layout_review, inspect_docx
+from docx_styling import apply_docx_styles
 
 for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"): stream.reconfigure(encoding="utf-8", errors="replace")
@@ -38,8 +39,19 @@ def prepare(args):
     doc.close()
     shutil.copy2(src,ws/"mineru_original.docx")
     shutil.copy2(src,ws/"working.docx")
+    default_profile = Path(__file__).resolve().parents[1] / "references" / "style_profile.json"
+    profile_path = args.profile.resolve(strict=True) if args.profile else default_profile
+    profile = json.loads(profile_path.read_text(encoding="utf-8")) if profile_path.is_file() else {}
+    style_report = apply_docx_styles(ws/"working.docx", profile)
+    save(ws/"style_policy.json", {
+        "profile_path": str(profile_path) if profile_path.is_file() else None,
+        "profile_sha256": sha(profile_path) if profile_path.is_file() else None,
+        **style_report,
+    })
     save(ws/"mineru_manifest.json",{"source_pdf":str(pdf),"source_sha256":sha(pdf),
         "source_pages":total,"raw_sha256":sha(ws/"mineru_original.docx"),
+        "working_docx_sha256":sha(ws/"working.docx"),
+        "style_policy_schema":style_report["schema"],
         "raw_stats":s})
     save(ws/"mineru_review.json",{"candidate_sha256":"","word_preview_checked":False,
         "pages":[{"pdf_page":i,"content_checked":False,"formulas_checked":False,"figures_checked":False}
@@ -47,7 +59,8 @@ def prepare(args):
     save(ws/"layout_review.json",{"schema":"docx-layout-review/1","candidate_sha256":"",
         "checked":False,"reviewer":"","findings":[]})
     print(json.dumps({"status":"ready_for_codex_formatting","workspace":str(ws),
-        "working_docx":str(ws/"working.docx"),"source_pages":total,"mineru_stats":s},ensure_ascii=False))
+        "working_docx":str(ws/"working.docx"),"source_pages":total,"mineru_stats":s,
+        "preformatted":True,"style_policy":style_report["paragraphs_by_style"]},ensure_ascii=False))
 
 def audit(args):
     ws=args.workspace.resolve(strict=True)
@@ -83,7 +96,8 @@ if __name__=="__main__":
     cmd=ap.add_subparsers(dest="action",required=True)
     p=cmd.add_parser("prepare")
     p.add_argument("--pdf",type=Path,required=True);p.add_argument("--mineru-docx",type=Path,required=True)
-    p.add_argument("--workspace",type=Path,required=True);p.set_defaults(f=prepare)
+    p.add_argument("--workspace",type=Path,required=True);p.add_argument("--profile",type=Path)
+    p.set_defaults(f=prepare)
     a=cmd.add_parser("audit");a.add_argument("--workspace",type=Path,required=True)
     a.add_argument("--docx",type=Path);a.add_argument("--require-accepted",action="store_true");a.set_defaults(f=audit)
     o=ap.parse_args();o.f(o)

@@ -1,30 +1,131 @@
 ---
 name: pdf-math-simple-layout
-description: Convert mathematics PDF handouts into editable Word, preferring MinerU DOCX exports, retaining clear geometry diagrams and performing source-bound visual review. Fall back to RapidOCR when MinerU is unavailable.
+description: Convert mathematics PDF handouts into editable Word. Preformat DOCX with a controlled paragraph-style contract before Codex edits content; prefer MinerU and use RapidOCR only as fallback.
 ---
 
-# Math PDF → Word: simple layout skill
+# Math PDF to Word: simple layout skill
 
-## When to use
+## Core rule: prevent layout defects before editing
 
-Use for mathematics worksheets, scanned handouts, and exercise compilations when editable Word body text is required. Figures may be preserved as clear source images. Use a separate AxMath workflow only when the client explicitly requests genuine editable AxMath equations.
+The working DOCX must be preformatted before Codex starts changing content. Do not create a bad layout and rely on the final audit to repair it.
+
+The pipeline has two separate responsibilities:
+1. **Preventive formatting:** create safe paragraph styles, clear unsafe source paragraph overrides, and make the intended hierarchy explicit before content editing.
+2. **Last-resort regression gate:** detect accidental changes that occur later. This gate is not the primary formatting method.
 
 ## Default: MinerU-first
 
-Read docs/MINERU_FIRST.md. Export a complete editable DOCX using MinerU (web or compatible local renderer). Check that the source PDF was fully converted. The Skill does not install MinerU or ship its models.
+Read docs/MINERU_FIRST.md. Export the complete source PDF to editable DOCX using MinerU. Keep the original PDF, raw MinerU DOCX, and teacher style sample immutable. Set the Python executable once before any optional sample-profile step: `$py = 'D:\我的python\python3.12\python.exe'`.
 
-Create a fresh workspace (do not overwrite any original):
+If a teacher/reference Word sample exists, extract a controlled style profile first:
 
 ~~~powershell
-$py = ".\.venv\Scripts\python.exe"
-& $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1"
+$py = 'D:\我的python\python3.12\python.exe'
+& $py scripts\layout_cli.py profile --sample "teacher-sample.docx" --output "style_profile.json"
 ~~~
 
-This keeps an untouched mineru_original.docx and a working.docx. Keep editing the existing DOCX with Word/Word-compatible tooling rather than rebuilding its content from OCR.
+Then prepare the handout using that profile:
 
-Correct all OCR/formula problems by comparing the PDF original; retain numbering, subquestions, data, tables, captions, and geometry diagrams in the original order. When geometry crops are needed, take them from the source PDF at high resolution and keep them adjacent to their corresponding question. Never infer unclear mathematics from context.
+~~~powershell
+& $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1" --profile "style_profile.json"
+~~~
 
-A formatting reference DOCX is for styles only, not content. A generic style profile is included in references/style_profile.json. The layout_cli.py profile command can extract basic margins and fonts from another sample.
+When no teacher sample exists, omit --profile; the built-in references/style_profile.json supplies safe defaults.
+
+The prepare command:
+- preserves the raw MinerU export as mineru_original.docx;
+- creates working.docx as a separate copy;
+- applies the preventive SIJI paragraph-style contract to working.docx before Codex opens it;
+- records the applied rules and hashes in style_policy.json.
+
+Do not bypass this step or start editing the raw MinerU export.
+
+## Preventive paragraph-style contract
+
+The preformatter creates these named Word paragraph styles:
+
+| Style | Use |
+|---|---|
+| SIJI Body | Ordinary explanatory text |
+| SIJI Title | Lecture/title lines |
+| SIJI Heading | Section headings |
+| SIJI Question | Numbered question stems |
+| SIJI Subquestion | Numbered subquestions such as （1） |
+| SIJI Formula | Standalone OfficeMath formula paragraphs |
+| SIJI AnswerBlank | Answer-only blank lines |
+| SIJI Caption | Figure captions |
+| SIJI Figure | Centered figure/image paragraphs |
+
+Each style explicitly controls left/right/first-line indentation, before/after spacing, line spacing, and alignment. The source document's direct paragraph-layout overrides are cleared in the working copy before the controlled style is applied.
+
+### Formula paragraphs
+
+- Standalone OfficeMath paragraphs use SIJI Formula.
+- Formula style has zero left, right, and first-line indentation by default.
+- Never copy paragraph formatting from a MinerU formula paragraph into a new formula paragraph.
+- Never set formula paragraph indentation manually. If the teacher sample has an abnormal formula indent over 1000 twips, the sample extractor rejects that paragraph rather than learning the bad value.
+- Inline formulas remain inside their question/body paragraph; do not split them into a new paragraph unless the source layout requires it.
+
+### Question hierarchy
+
+- Numbered questions use SIJI Question.
+- Subquestions use SIJI Subquestion.
+- The default subquestion indent is 600 twips. A provided teacher sample can override this through median per-kind style extraction.
+- A sample paragraph with any indentation over 1000 twips is excluded from style learning. This prevents an anomalous source formula from contaminating the whole style profile.
+- Do not flatten all paragraph indents to zero. Use the prepared hierarchy styles.
+
+### Answer blanks and source text
+
+- Answer parentheses and their spaces are source content, not decorative formatting.
+- Preserve the exact parentheses and number of spaces shown in the source PDF.
+- Never run global whitespace normalization, repeated-space collapsing, global strip(), or find/replace on answer blanks.
+- The preformatter changes paragraph/run formatting only. It must not rewrite paragraph text or OfficeMath XML.
+- When editing a paragraph containing OfficeMath, do not replace the entire paragraph text with paragraph.text = ...; that can discard embedded equation nodes. Edit only the relevant text runs and preserve the math XML.
+
+### Codex editing contract
+
+After prepare, Codex must reuse the named styles for every inserted paragraph. When using python-docx, assign the matching style and leave paragraph_format indentation/spacing properties alone. When using Word, select the matching named style from the style list.
+
+Do not:
+- set paragraph_format.left_indent, right_indent, first_line_indent, space_before, space_after, or line_spacing ad hoc;
+- paste paragraph formatting from mineru_original.docx;
+- use Format Painter from a suspicious formula paragraph;
+- globally normalize spaces or paragraph text;
+- create new formula paragraphs with Normal style and manual indentation.
+
+Correct OCR/formula content by comparing the PDF original. Retain numbering, subquestions, data, tables, captions, and geometry diagrams in the original order. When geometry crops are needed, take them from the source PDF at high resolution and keep them adjacent to their corresponding question. Never infer unclear mathematics from context.
+
+A formatting reference DOCX is for styles only, not content. Do not copy its question text into the handout.
+
+## RapidOCR fallback
+
+Only if MinerU is unavailable or its DOCX export fails. Do not repeat OCR after a valid MinerU output.
+
+~~~powershell
+& $py scripts\layout_cli.py prepare --pdf "input.pdf" --output "fallback_job"
+& $py scripts\layout_cli.py recognize --workspace "fallback_job"
+# Correct blocks and high-resolution figure bbox regions in fallback_job/layout.json.
+& $py scripts\layout_cli.py build --workspace "fallback_job" --profile "references/style_profile.json"
+~~~
+
+The build command applies the same SIJI paragraph-style contract to the generated candidate before review. If a teacher sample is available, create a profile with layout_cli.py profile and pass it to build.
+
+## Last-resort layout regression gate
+
+The preventive style contract is the default. Keep the scanner as a final safety net on both MinerU and RapidOCR routes.
+
+~~~powershell
+& $py scripts\docx_layout_check.py check --docx "job1\working.docx" --output "job1\docx_layout_findings.json"
+& $py scripts\docx_layout_check.py template --docx "job1\working.docx" --output "job1\layout_review.json"
+~~~
+
+It flags effective direct or inherited-style left/right/first-line/hanging indents above 1000 twips;
+- direct or inherited-style paragraph before/after spacing above 720 twips;
+- three or more consecutive spaces inside answer parentheses.
+
+Compare findings with the source PDF. Do not automatically normalize them. Gray dots, return arrows and tab arrows in Word are nonprinting formatting marks, not document characters; hide formatting marks or inspect the exported PDF before deciding whether a real character exists.
+
+## Render and source-bound acceptance
 
 Render the result with genuine Microsoft Word (Windows COM):
 
@@ -38,47 +139,14 @@ Compare all source PDF pages with all actual output Word pages. Record the revie
 & $py scripts\mineru_handoff.py audit --workspace "job1" --require-accepted
 ~~~
 
-Only deliver when audit status is accepted **and** the actual page/figure/math review has been performed. After editing the Word file again, the old review hash is invalid.
-
-## Mandatory Word paragraph-layout regression check
-
-Run this check after the final Word edit on **both** the MinerU-first and RapidOCR fallback routes:
-
-~~~powershell
-python scripts\docx_layout_check.py check --docx "job1\working.docx" --output "job1\docx_layout_findings.json"
-python scripts\docx_layout_check.py template --docx "job1\working.docx" --output "job1\layout_review.json"
-~~~
-
-The scanner flags direct paragraph properties that commonly create invisible layout defects:
-
-- Left/right/first-line/hanging indentation above 1000 twips (50 pt). Math paragraphs containing `m:oMath` / `m:oMathPara` receive a dedicated `formula_paragraph_indent` finding. A 1687-twip left indent can push a formula far to the right and leave a large blank region on the left.
-- Paragraph before/after spacing above 720 twips (36 pt).
-- Three or more consecutive spaces inside answer parentheses, such as `（    ）` or `(    )`.
-
-Compare each finding with the source PDF and neighbouring questions before changing it. A 600-twip nested-question indent may be correct; do not zero all indents or normalize every formula to the same alignment. Do not bulk-delete empty paragraphs. Gray dots, return arrows and tab arrows in Word are usually nonprinting formatting marks; hide formatting marks or inspect the exported PDF before deciding whether a real character exists.
-
-After correcting findings, save the DOCX and rerun both commands. The generated `layout_review.json` is bound to the candidate SHA-256. Set `checked=true` and provide a reviewer. Any remaining intentional finding must include `disposition="intentional"`, a reason, and `source_pdf_checked=true`. A corrected finding should disappear from the new scan. Both MinerU and RapidOCR audit commands require this review file; a later DOCX edit invalidates it.
-
-## Fallback: local RapidOCR
-
-Only if MinerU is unavailable or DOCX export fails. Do not repeat OCR after a valid MinerU output.
-
-~~~powershell
-& $py scripts\layout_cli.py prepare --pdf "input.pdf" --output "fallback_job"
-& $py scripts\layout_cli.py recognize --workspace "fallback_job"
-# Correct blocks and high-resolution figure bbox regions in fallback_job/layout.json.
-& $py scripts\layout_cli.py build --workspace "fallback_job" --profile "references/style_profile.json"
-& $py scripts\layout_cli.py render --docx "fallback_job/candidate.docx" --output "fallback_job/word_preview"
-& $py scripts\layout_cli.py audit --workspace "fallback_job"
-~~~
-
-For block types, cropping, review and source integrity, see docs/WORKFLOW.md. All programs should operate on copies in a separate workspace and preserve existing original files.
+Only deliver when audit status is accepted and the actual page/figure/math review has been performed. After editing the Word file again, the old review hash is invalid.
 
 ## Software
 
-- scripts/mineru_handoff.py: import existing MinerU DOCX and verify source hashes and review status.
-- scripts/layout_cli.py: local OCR fallback, structure, formatting, Word render and audit.
-- scripts/start_one_lecture.ps1 and scripts/finish_one_lecture.ps1: optional fallback shortcuts.
+- scripts/mineru_handoff.py: preserve the raw MinerU DOCX and preformat the working copy before editing.
+- scripts/docx_styling.py: create/apply the preventive SIJI paragraph-style contract and extract safe styles from a teacher sample.
+- scripts/layout_cli.py: profile extraction, RapidOCR fallback, build, Word render and audit.
+- scripts/docx_layout_check.py: last-resort DOCX paragraph-layout regression scanner.
 - tests: deterministic local checks without Word or OCR.
 
-Run from the Codex local terminal. No remote computer connector is required.
+Run from the Codex local terminal. All programs should operate on copies in a separate workspace and preserve existing original files. No remote computer connector is required.

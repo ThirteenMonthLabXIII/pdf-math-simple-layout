@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from docx import Document
+from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml import parse_xml
 from docx.shared import Twips
 
@@ -61,6 +62,22 @@ class DocxLayoutCheckTest(unittest.TestCase):
         doc.add_paragraph("答案：（  ）")
         doc.save(path)
         self.assertEqual(inspect_docx(path)["findings"], [])
+
+    def test_flags_formula_indent_in_named_paragraph_style(self):
+        path = self.root / "bad-style.docx"
+        doc = Document()
+        bad_style = doc.styles.add_style("Bad Formula Style", WD_STYLE_TYPE.PARAGRAPH)
+        bad_style.paragraph_format.left_indent = Twips(1687)
+        formula = doc.add_paragraph()
+        formula.style = bad_style
+        formula._p.append(parse_xml(MATH_XML))
+        doc.save(path)
+
+        report = inspect_docx(path)
+        finding = next(item for item in report["findings"] if item["code"] == "formula_paragraph_indent")
+        self.assertEqual(finding["value_twips"], 1687)
+        self.assertEqual(finding["property_source"], "style")
+        self.assertEqual(finding["style_name"], "Bad Formula Style")
 
     def test_review_requires_current_hash_and_source_pdf_confirmation(self):
         path = self.root / "suspect.docx"

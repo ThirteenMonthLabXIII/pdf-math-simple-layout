@@ -2,16 +2,19 @@
 
 A Codex-friendly skill to turn scanned mathematics handouts into editable Microsoft Word documents.
 
-**Preferred:** MinerU → editable DOCX → Word formatting and proofreading → render → per-page review.  
-**Fallback:** local RapidOCR → editable DOCX using structured layout JSON.
+**Preferred:** MinerU export → preventive Word style contract → content correction → real Word render → per-page review.
+**Fallback:** local RapidOCR → editable DOCX → the same preventive style contract.
 
 Features:
 - Preserve source PDFs and raw MinerU DOCX exports as immutable originals.
+- Preformat the MinerU working copy before Codex edits it; do not inherit unsafe source paragraph indents.
+- Apply named paragraph styles for body text, questions, subquestions, standalone formulas, answer blanks, headings, titles and captions.
+- Keep formula paragraph indents safe by default; learn question hierarchy from a teacher sample while rejecting extreme sample indents.
+- Preserve answer-parenthesis text and exact spaces; never globally normalize source whitespace.
+- Apply the same style contract automatically to RapidOCR-built DOCX candidates.
 - Keep mathematical text editable; preserve geometry diagrams as high-resolution crops.
-- Retain the original question order, mathematical notation, figures, and tables.
-- Apply formatting from a reference Word document without copying its question content.
 - Refuse to mark a document accepted until source pages, rendered Word pages and final hashes are checked.
-- Scan DOCX paragraph XML for abnormal math indents, excessive paragraph spacing, and mismatched answer-blank spacing; bind the review to the final DOCX hash.
+- Retain a final DOCX layout scanner as a last-resort regression gate, not as the primary correction method.
 
 ## Install (Windows; Python 3.11+)
 
@@ -29,13 +32,20 @@ First export the **entire** source PDF from MinerU as an editable DOCX.
 
 ~~~powershell
 $py = ".\.venv\Scripts\python.exe"
-& $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1"
-# Correct and format job1\working.docx in Microsoft Word.
+
+# If a teacher sample exists, learn its safe paragraph styles first:
+& $py scripts\layout_cli.py profile --sample "teacher-sample.docx" --output "style_profile.json"
+& $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1" --profile "style_profile.json"
+
+# If there is no teacher sample, use built-in safe defaults:
+# & $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1"
+
+# Correct content using the prepared SIJI paragraph styles.
 & $py scripts\layout_cli.py render --docx "job1\working.docx" --output "job1\word_preview"
+
+# Last-resort regression gate and source-bound acceptance.
 & $py scripts\docx_layout_check.py check --docx "job1\working.docx" --output "job1\docx_layout_findings.json"
 & $py scripts\docx_layout_check.py template --docx "job1\working.docx" --output "job1\layout_review.json"
-# Compare all findings with the source PDF; fix or explicitly justify any retained item.
-# Complete layout_review.json and mineru_review.json against the final DOCX hash.
 & $py scripts\mineru_handoff.py audit --workspace "job1" --require-accepted
 ~~~
 
@@ -47,6 +57,6 @@ Microsoft Word and Windows are required for real Word preview rendering. MinerU 
 
 ## 中文
 
-适用于**数学扫描PDF转可编辑Word简排**。默认使用 MinerU 导出 DOCX，再由 Codex 在原生 Word 文件上校对公式、题号、表格与几何图形，按照单独提供的Word样例排版，最后逐页对照原PDF验收。新增Word段落版式扫描，检查公式异常缩进、段前段后距和答案括号空格，并将审核绑定最终DOCX哈希。MinerU不可用时才运行RapidOCR备用识别，避免重复转换。
+适用于**数学扫描 PDF 转可编辑 Word 简排**。默认使用 MinerU 导出 DOCX，prepare 阶段先给工作副本套用受控段落样式，再由 Codex 校对内容。公式段落预设零缩进，题目层级从老师样例提取，异常样例缩进不会被继承；答案括号和空格原样保留。RapidOCR 构建也自动套用同一套样式。最终扫描只负责兜底，不承担主要纠错工作。
 
 MIT License.

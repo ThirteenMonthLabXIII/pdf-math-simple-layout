@@ -53,6 +53,46 @@ def _text(paragraph) -> str:
     return "".join(values)
 
 
+def _read_style_map(archive):
+    if "word/styles.xml" not in archive.namelist():
+        return {}, None
+    root = ET.fromstring(archive.read("word/styles.xml"))
+    styles = {}
+    default_paragraph_style = None
+    for style in root.findall(f"{{{W}}}style"):
+        if style.get(f"{{{W}}}type") != "paragraph":
+            continue
+        style_id = style.get(f"{{{W}}}styleId")
+        if not style_id:
+            continue
+        ppr = style.find(f"{{{W}}}pPr")
+        based_on = style.find(f"{{{W}}}basedOn")
+        name = style.find(f"{{{W}}}name")
+        styles[style_id] = {
+            "ppr": ppr,
+            "based_on": based_on.get(f"{{{W}}}val") if based_on is not None else None,
+            "name": name.get(f"{{{W}}}val") if name is not None else style_id,
+            "default": style.get(f"{{{W}}}default") == "1",
+        }
+        if styles[style_id]["default"]:
+            default_paragraph_style = style_id
+    return styles, default_paragraph_style
+
+
+def _inherited_style_value(style_map, style_id, property_name, attribute):
+    visited = set()
+    while style_id and style_id in style_map and style_id not in visited:
+        visited.add(style_id)
+        info = style_map[style_id]
+        ppr = info["ppr"]
+        element = ppr.find(f"{{{W}}}{property_name}") if ppr is not None else None
+        value = _int_attr(element, attribute)
+        if value is not None:
+            return value, info["name"]
+        style_id = info["based_on"]
+    return None, None
+
+
 def inspect_docx(
     docx_path: Path,
     indent_threshold_twips: int = DEFAULT_INDENT_TWIPS,
@@ -64,6 +104,7 @@ def inspect_docx(
         if "word/document.xml" not in archive.namelist():
             raise ValueError("DOCX is missing word/document.xml")
         root = ET.fromstring(archive.read("word/document.xml"))
+        style_map, default_paragraph_style = _read_style_map(archive)
 
     paragraphs = list(root.iter(f"{{{W}}}p"))
     findings = []
@@ -87,18 +128,28 @@ def inspect_docx(
         ppr = paragraph.find(f"{{{W}}}pPr")
 
         ind = ppr.find(f"{{{W}}}ind") if ppr is not None else None
+        pstyle = ppr.find(f"{{{W}}}pStyle") if ppr is not None else None
+        style_id = pstyle.get(f"{{{W}}}val") if pstyle is not None else default_paragraph_style
         for attribute in ("left", "right", "firstLine", "hanging"):
             value = _int_attr(ind, attribute)
+            source = "paragraph"
+            style_name = None
+            if value is None:
+                value, style_name = _inherited_style_value(style_map, style_id, "ind", attribute)
+                source = "style"
             if value is not None and abs(value) > indent_threshold_twips:
                 code = "formula_paragraph_indent" if has_math and attribute in ("left", "firstLine") else "paragraph_indent"
+                origin = f"style {style_name}" if source == "style" else "direct paragraph formatting"
                 add(
                     index,
                     code,
                     "high" if has_math else "medium",
-                    f"Paragraph {index} has {attribute}={value} twips (threshold {indent_threshold_twips}); compare with the source PDF and neighbouring paragraphs.",
+                    f"Paragraph {index} has effective {attribute}={value} twips from {origin} (threshold {indent_threshold_twips}); compare with the source PDF and neighbouring paragraphs.",
                     excerpt,
                     attribute=attribute,
                     value_twips=value,
+                    property_source=source,
+                    style_name=style_name,
                     contains_math=has_math,
                     source_pdf_required=True,
                 )
@@ -106,15 +157,23 @@ def inspect_docx(
         spacing = ppr.find(f"{{{W}}}spacing") if ppr is not None else None
         for attribute in ("before", "after"):
             value = _int_attr(spacing, attribute)
+            source = "paragraph"
+            style_name = None
+            if value is None:
+                value, style_name = _inherited_style_value(style_map, style_id, "spacing", attribute)
+                source = "style"
             if value is not None and value > spacing_threshold_twips:
+                origin = f"style {style_name}" if source == "style" else "direct paragraph formatting"
                 add(
                     index,
                     "large_paragraph_spacing",
                     "medium",
-                    f"Paragraph {index} has {attribute} spacing={value} twips (threshold {spacing_threshold_twips}); verify that the resulting whitespace is intentional.",
+                    f"Paragraph {index} has effective {attribute} spacing={value} twips from {origin} (threshold {spacing_threshold_twips}); verify that the resulting whitespace is intentional.",
                     excerpt,
                     attribute=attribute,
                     value_twips=value,
+                    property_source=source,
+                    style_name=style_name,
                     contains_math=has_math,
                     source_pdf_required=True,
                 )

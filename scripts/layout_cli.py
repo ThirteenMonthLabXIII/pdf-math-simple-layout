@@ -36,6 +36,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 from docx_layout_check import evaluate_layout_review, inspect_docx
+from docx_styling import apply_docx_styles, default_paragraph_policy, extract_paragraph_policy
 
 SCHEMA = "math-simple-layout/1"
 TEXT_TYPES = {"title", "heading", "paragraph", "question", "subquestion", "math"}
@@ -59,6 +60,7 @@ DEFAULT_PROFILE = {
     "heading_after_pt": 4,
     "title_after_pt": 10,
     "image_max_width_cm": 14.7,
+    "paragraph_policy": default_paragraph_policy(),
 }
 
 
@@ -129,6 +131,10 @@ def cmd_profile(args):
             if paragraph.paragraph_format.space_after:
                 profile["title_after_pt"] = round(paragraph.paragraph_format.space_after.pt, 2)
             break
+    profile["paragraph_policy"], policy_warnings = extract_paragraph_policy(
+        args.sample, profile.get("paragraph_policy")
+    )
+    profile["paragraph_policy_warnings"] = policy_warnings
     profile["sample_sha256"] = sha256(args.sample)
     profile["source_reference_only"] = True
     save(args.output, profile)
@@ -363,6 +369,7 @@ def make_document(data, profile: dict, result: Path, workdir: Path):
                 paragraph.add_run().add_picture(str(target),width=Cm(width))
                 if block.get("caption"):
                     cp=doc.add_paragraph()
+                    cp.style=doc.styles["Caption"]
                     cp.alignment=WD_ALIGN_PARAGRAPH.CENTER
                     set_font(cp.add_run(block["caption"]),profile)
             elif typ == "table":
@@ -381,6 +388,7 @@ def make_document(data, profile: dict, result: Path, workdir: Path):
     pdf.close()
     result.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(result))
+    return apply_docx_styles(result, profile)
 
 
 def cmd_build(args):
@@ -391,8 +399,9 @@ def cmd_build(args):
     output = (args.output or ws / "candidate.docx").resolve()
     if output.exists() and not args.overwrite:
         raise FileExistsError(f"Refusing to overwrite existing candidate: {output}; pass --output new_name.docx")
-    make_document(data,profile,output,ws)
+    style_report = make_document(data,profile,output,ws)
     report={"schema":SCHEMA,"source_sha256":data["source_sha256"],"candidate":str(output),"candidate_sha256":sha256(output),
+            "style_policy":style_report,
             "page_count":data["page_count"],"blocks":sum(len(p["blocks"]) for p in data["pages"]),"layout_errors":invalid,
             "unverified_pages":[p["page"] for p in data["pages"] if not p.get("verified")],"status":"candidate_not_approved"}
     save(ws / "build_report.json",report)

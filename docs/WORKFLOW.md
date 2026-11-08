@@ -44,6 +44,21 @@
 Word内容有修改后必须清除旧的批准记录/更新哈希重新看图，不得复制旧记录冒充验收。
 
 
+## Preventive Word style contract (applies before content editing)
+
+The DOCX must be preformatted BEFORE Codex begins editing. Do not rely on a final scan to repair a bad layout.
+
+- MinerU route: mineru_handoff.py prepare copies the raw export to mineru_original.docx, then applies docx_styling.apply_docx_styles to working.docx using references/style_profile.json or a profile extracted from the teacher sample.
+- RapidOCR route: layout_cli.py build applies the same style contract to the generated candidate before it is opened for review.
+- The contract creates SIJI Body, SIJI Title, SIJI Heading, SIJI Question, SIJI Subquestion, SIJI Formula, SIJI AnswerBlank, SIJI Caption, and SIJI Figure paragraph styles. Each style explicitly owns left/right/first-line indent, paragraph spacing, line spacing, and alignment.
+- Formula paragraphs start with zero left/right/first-line indent. The source DOCX's direct paragraph indents are cleared in the working copy before editing; a 1687-twip source formula indent therefore never becomes the working formula style.
+- Subquestion indentation is a controlled hierarchy value (600 twips by default). If a teacher sample is provided, the profile extractor learns its median per-kind paragraph settings. Any sample paragraph carrying an indent above 1000 twips is excluded from learning, so an anomalous formula does not contaminate the style profile.
+- Codex must reuse the named styles for every inserted paragraph. Never set paragraph_format.left_indent, right_indent, first_line_indent, space_before, space_after, or line_spacing ad hoc. Never paste paragraph formatting from the raw MinerU export.
+- Answer blank text is content, not layout decoration. Preserve the exact parentheses and spaces from the source PDF. Do not run global whitespace normalization, strip() on source text, or replace repeated spaces. The style pass changes paragraph/run formatting only and leaves text and OfficeMath XML unchanged.
+- Word gray dots, return arrows and tab arrows are nonprinting formatting marks. They are not characters in the document text; do not delete or insert text to address their on-screen display.
+
+The final layout scanner remains a last-resort regression gate. It should find no introduced anomaly because the working document was built from the style contract first.
+
 ## Word paragraph-layout regression check (MinerU and RapidOCR)
 
 After the final DOCX save and before audit, run:
@@ -53,7 +68,7 @@ python scripts/docx_layout_check.py check --docx "job1/working.docx" --output "j
 python scripts/docx_layout_check.py template --docx "job1/working.docx" --output "job1/layout_review.json"
 ~~~
 
-The scanner flags:
+The scanner flags direct paragraph properties and inherited paragraph-style properties:
 - w:ind left/right/first-line/hanging values above 1000 twips (50 pt); formula paragraphs containing m:oMath / m:oMathPara get a dedicated finding. The regression case that motivated this check had a 1687-twip left indent that pushed a formula rightward.
 - w:spacing before/after values above 720 twips (36 pt).
 - Three or more consecutive spaces inside answer parentheses.
