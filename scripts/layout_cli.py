@@ -37,6 +37,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 from docx_layout_check import evaluate_layout_review, inspect_docx
 from docx_styling import apply_docx_styles, default_paragraph_policy, extract_paragraph_policy
+from review_coverage import complete_page_review
 
 SCHEMA = "math-simple-layout/1"
 TEXT_TYPES = {"title", "heading", "paragraph", "question", "subquestion", "math"}
@@ -192,6 +193,7 @@ def cmd_prepare(args):
         entry["render"] = dest.relative_to(out).as_posix()
         entry["blocks"] = native_blocks(page, entry["page"]) if not entry["scanned"] else []
         entry["verified"] = False
+        entry["source_blank"] = False
         entry["review_notes"] = "" if not entry["scanned"] else "扫描件：需要运行OCR并按页面图片核对公式、题号、图形区域"
     doc.close()
     save(manifest_path, info)
@@ -265,7 +267,14 @@ def check_source(data):
     source = Path(data["source_pdf"])
     if not source.is_file() or sha256(source) != data["source_sha256"]:
         raise ValueError("Source PDF missing or changed; do not silently proceed")
-    if data["page_count"] != len(data["pages"]):
+    page_count = data.get("page_count")
+    pages = data.get("pages")
+    with fitz.open(str(source)) as original:
+        actual_page_count = len(original)
+    if (type(page_count) is not int or page_count < 1 or page_count != actual_page_count
+            or not isinstance(pages, list) or len(pages) != page_count
+            or any(not isinstance(p, dict) or type(p.get("page")) is not int for p in pages)
+            or [p["page"] for p in pages] != list(range(1, page_count + 1))):
         raise ValueError("Page mapping incomplete")
     return source
 
@@ -283,11 +292,12 @@ def validate_layout(data, allow_draft=False):
     check_source(data)
     bad = []
     for p in data["pages"]:
-        if not p["blocks"]:
+        if (not any(b.get("type") not in {"blank", "page_break"} for b in p["blocks"])
+                and p.get("source_blank") is not True):
             bad.append(f"page {p['page']}: no content blocks")
         for i, b in enumerate(p["blocks"]):
             typ = b.get("type")
-            if typ not in TEXT_TYPES | {"image", "table", "page_break"}:
+            if typ not in TEXT_TYPES | {"image", "table", "blank", "page_break"}:
                 bad.append(f"page {p['page']} block {i}: unsupported type {typ!r}")
             if typ in TEXT_TYPES and not str(b.get("text", "")).strip():
                 bad.append(f"page {p['page']} block {i}: empty text")
@@ -296,6 +306,8 @@ def validate_layout(data, allow_draft=False):
                 except Exception as e: bad.append(str(e))
             if typ == "table" and not (isinstance(b.get("rows"), list) and b["rows"] and all(isinstance(r,list) for r in b["rows"])):
                 bad.append(f"page {p['page']} block {i}: invalid table rows")
+            if typ == "blank" and (type(b.get("count", 1)) is not int or not 1 <= b.get("count", 1) <= 100):
+                bad.append(f"page {p['page']} block {i}: blank count must be an integer from 1 to 100")
     if bad and not allow_draft:
         raise ValueError("Layout incomplete:\n" + "\n".join(bad[:20]))
     return bad
@@ -383,6 +395,9 @@ def make_document(data, profile: dict, result: Path, workdir: Path):
                         c=table.cell(row_i,col_i)
                         c.text=""
                         set_font(c.paragraphs[0].add_run(str(val)),profile)
+            elif typ == "blank":
+                for _ in range(block.get("count", 1)):
+                    doc.add_paragraph()
             elif typ == "page_break":
                 doc.add_page_break()
     pdf.close()
@@ -403,7 +418,7 @@ def cmd_build(args):
     report={"schema":SCHEMA,"source_sha256":data["source_sha256"],"candidate":str(output),"candidate_sha256":sha256(output),
             "style_policy":style_report,
             "page_count":data["page_count"],"blocks":sum(len(p["blocks"]) for p in data["pages"]),"layout_errors":invalid,
-            "unverified_pages":[p["page"] for p in data["pages"] if not p.get("verified")],"status":"candidate_not_approved"}
+            "unverified_pages":[p["page"] for p in data["pages"] if p.get("verified") is not True],"status":"candidate_not_approved"}
     save(ws / "build_report.json",report)
     print(json.dumps({"output":str(output),"status":report["status"],"unverified_pages":report["unverified_pages"],"layout_errors":invalid},ensure_ascii=False))
 
@@ -442,15 +457,19 @@ def cmd_audit(args):
     exp_images=sum(b["type"]=="image" for p in data["pages"] for b in p["blocks"])
     actual_images=len(doc.inline_shapes)
     bad_layout=validate_layout(data,allow_draft=True)
-    unverified=[p["page"] for p in data["pages"] if not p.get("verified")]
+    unverified=[p["page"] for p in data["pages"] if p.get("verified") is not True]
     review_path=ws/"visual_review.json"
     review=load(review_path) if review_path.exists() else {}
     expected_hash=sha256(output)
     review_pages=review.get("pages",[])
-    checked=[r["page"] for r in review_pages if all(r.get(k) is True for k in ("source_checked","output_checked","text_math_checked","figures_checked"))]
+    review_fields=("source_checked","output_checked","text_math_checked","figures_checked")
+    checked=[r.get("page") for r in review_pages if isinstance(r,dict) and all(r.get(k) is True for k in review_fields)] if isinstance(review_pages,list) else []
     if review.get("candidate_sha256") != expected_hash:
         checked=[]
-    review_complete=len(checked)==data["page_count"] and bool(review.get("reviewer"))
+    reviewer=review.get("reviewer")
+    review_complete=(review.get("candidate_sha256")==expected_hash
+        and complete_page_review(review_pages,data["page_count"],"page",review_fields)
+        and isinstance(reviewer,str) and bool(reviewer.strip()))
     docx_layout = inspect_docx(output)
     save(ws / "docx_layout_findings.json", docx_layout)
     layout_review = evaluate_layout_review(output, ws / "layout_review.json", docx_layout)

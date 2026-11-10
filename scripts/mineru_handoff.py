@@ -6,6 +6,7 @@ import pymupdf
 from docx import Document
 from docx_layout_check import evaluate_layout_review, inspect_docx
 from docx_styling import apply_docx_styles
+from review_coverage import complete_page_review
 
 for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"): stream.reconfigure(encoding="utf-8", errors="replace")
@@ -68,13 +69,15 @@ def audit(args):
     r=json.loads((ws/"mineru_review.json").read_text(encoding="utf-8"))
     doc=args.docx.resolve(strict=True) if args.docx else ws/"working.docx"
     s=stats(doc)
-    checked=(len(r.get("pages",[]))==m["source_pages"] and
-             all(p.get("content_checked") is True and p.get("formulas_checked") is True
-                 and p.get("figures_checked") is True for p in r.get("pages",[])))
+    checked=complete_page_review(r.get("pages"),m["source_pages"],"pdf_page",
+        ("content_checked","formulas_checked","figures_checked"))
+    with pymupdf.open(str(m["source_pdf"])) as source_pdf:
+        source_page_count_matches=len(source_pdf)==m["source_pages"]
     layout_report=inspect_docx(doc)
     save(ws/"docx_layout_findings.json",layout_report)
     layout_review=evaluate_layout_review(doc,ws/"layout_review.json",layout_report)
     checks={"source_unchanged":sha(Path(m["source_pdf"]))==m["source_sha256"],
+        "source_page_count_matches":source_page_count_matches,
         "mineru_raw_unchanged":sha(ws/"mineru_original.docx")==m["raw_sha256"],
         "editable_text_present":s["chars"]>10,
         "current_document_reviewed":r.get("candidate_sha256")==sha(doc),

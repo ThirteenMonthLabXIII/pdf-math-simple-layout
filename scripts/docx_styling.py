@@ -79,14 +79,14 @@ def default_paragraph_policy() -> dict:
         return value
     return {
         "body": style(7),
-        "title": style(10, alignment="center", font_size_key="title_pt", bold=True, keep_with_next=True),
-        "heading": style(4, space_before_pt=6, font_size_key="heading_pt", bold=True, keep_with_next=True),
+        "title": style(10, alignment="center", font_size_key="title_pt", bold=True),
+        "heading": style(4, space_before_pt=6, font_size_key="heading_pt", bold=True),
         "question": style(7),
         "subquestion": style(10, left_indent_twips=600),
-        "formula": style(7, alignment="left", keep_together=True),
+        "formula": style(7, alignment="left"),
         "answer_blank": style(7),
         "caption": style(4, alignment="center"),
-        "figure": style(4, alignment="center", keep_together=True),
+        "figure": style(4, alignment="center"),
     }
 
 
@@ -256,44 +256,68 @@ def _get_or_create_style(document, name: str):
         style = document.styles[name]
     except KeyError:
         style = document.styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
-    style.base_style = document.styles["Normal"]
+        style.base_style = document.styles["Normal"]
     return style
+
+
+PAGINATION_PROPERTIES = ("keep_with_next", "keep_together", "page_break_before", "widow_control")
+
+
+def _inherited_pagination(style):
+    """Read style-chain pagination values without changing them."""
+    values = {}
+    visited = set()
+    while style is not None and style.style_id not in visited:
+        visited.add(style.style_id)
+        for name in PAGINATION_PROPERTIES:
+            if name not in values:
+                value = getattr(style.paragraph_format, name)
+                if value is not None:
+                    values[name] = value
+        style = style.base_style
+    return {name: values.get(name) for name in PAGINATION_PROPERTIES}
+
+
+def _configure_style(style, spec, profile, allow_pagination):
+    font_name = profile.get("font_name", "宋体")
+    east_asia_font = profile.get("east_asia_font", "宋体")
+    body_pt = float(profile.get("body_pt", 10.5))
+    font = style.font
+    font.name = font_name
+    font.size = Pt(float(profile.get(spec.get("font_size_key", ""), body_pt)))
+    if "bold" in spec:
+        font.bold = bool(spec["bold"])
+    _set_east_asia_font(style, font_name, east_asia_font)
+
+    fmt = style.paragraph_format
+    fmt.left_indent = Twips(int(spec.get("left_indent_twips", 0)))
+    fmt.right_indent = Twips(int(spec.get("right_indent_twips", 0)))
+    fmt.first_line_indent = Twips(int(spec.get("first_line_indent_twips", 0)))
+    fmt.space_before = Pt(float(spec.get("space_before_pt", 0)))
+    fmt.space_after = Pt(float(spec.get("space_after_pt", 7)))
+    fmt.line_spacing = float(spec.get("line_spacing", profile.get("line_spacing", 1.15)))
+    fmt.alignment = ALIGNMENTS.get(spec.get("alignment", "left"), WD_ALIGN_PARAGRAPH.LEFT)
+    if allow_pagination and "keep_with_next" in spec:
+        fmt.keep_with_next = bool(spec["keep_with_next"])
+    if allow_pagination and "keep_together" in spec:
+        fmt.keep_together = bool(spec["keep_together"])
 
 
 def _apply_style_contract(document, profile: dict) -> dict:
     policy = copy.deepcopy(default_paragraph_policy())
     supplied = profile.get("paragraph_policy") or {}
+    allow_pagination = profile.get("allow_pagination_overrides") is True
     for kind, values in supplied.items():
         if kind in policy and isinstance(values, dict):
-            policy[kind].update(values)
+            policy[kind].update({key: value for key, value in values.items()
+                if allow_pagination or key not in {"keep_with_next", "keep_together"}})
 
-    font_name = profile.get("font_name", "宋体")
-    east_asia_font = profile.get("east_asia_font", "宋体")
-    body_pt = float(profile.get("body_pt", 10.5))
     styles = {}
 
     for kind, style_name in STYLE_NAMES.items():
         spec = policy[kind]
         style = _get_or_create_style(document, style_name)
-        font = style.font
-        font.name = font_name
-        font.size = Pt(float(profile.get(spec.get("font_size_key", ""), body_pt)))
-        if "bold" in spec:
-            font.bold = bool(spec["bold"])
-        _set_east_asia_font(style, font_name, east_asia_font)
-
-        fmt = style.paragraph_format
-        fmt.left_indent = Twips(int(spec.get("left_indent_twips", 0)))
-        fmt.right_indent = Twips(int(spec.get("right_indent_twips", 0)))
-        fmt.first_line_indent = Twips(int(spec.get("first_line_indent_twips", 0)))
-        fmt.space_before = Pt(float(spec.get("space_before_pt", 0)))
-        fmt.space_after = Pt(float(spec.get("space_after_pt", 7)))
-        fmt.line_spacing = float(spec.get("line_spacing", profile.get("line_spacing", 1.15)))
-        fmt.alignment = ALIGNMENTS.get(spec.get("alignment", "left"), WD_ALIGN_PARAGRAPH.LEFT)
-        if "keep_with_next" in spec:
-            fmt.keep_with_next = bool(spec["keep_with_next"])
-        if "keep_together" in spec:
-            fmt.keep_together = bool(spec["keep_together"])
+        _configure_style(style, spec, profile, allow_pagination)
         styles[kind] = style
     return {"policy": policy, "styles": styles}
 
@@ -330,12 +354,42 @@ def apply_docx_styles(docx_path: Path, profile: dict | None = None, output_path:
     document = Document(str(docx_path))
     contract = _apply_style_contract(document, profile)
     counts = Counter()
+    variants = {}
     for paragraph in iter_paragraphs(document):
         kind = classify_paragraph(paragraph)
         if kind not in contract["styles"]:
             kind = "body"
+        original_style = paragraph.style
+        style = contract["styles"][kind]
+        spec = contract["policy"][kind]
+        allow_pagination = profile.get("allow_pagination_overrides") is True
+        overridden = {name for name in ("keep_with_next", "keep_together")
+                      if allow_pagination and name in spec}
+        original_settings = _inherited_pagination(original_style)
+        styled_settings = _inherited_pagination(style)
+        desired = {name: styled_settings[name] if name in overridden else original_settings[name]
+                   for name in PAGINATION_PROPERTIES}
+        if desired != styled_settings:
+            # Keep the source style's effective pagination without paragraph-level overrides.
+            signature = json.dumps(desired, sort_keys=True)
+            key = (kind, signature)
+            if key not in variants:
+                suffix = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:12]
+                name = STYLE_NAMES[kind] + " inherited " + suffix
+                try:
+                    variant = document.styles[name]
+                except KeyError:
+                    variant = document.styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
+                    for prop, value in desired.items():
+                        if value is not None:
+                            setattr(variant.paragraph_format, prop, value)
+                if _inherited_pagination(variant) != desired:
+                    raise ValueError("Existing SIJI inherited style has unexpected pagination")
+                _configure_style(variant, spec, profile, allow_pagination)
+                variants[key] = variant
+            style = variants[key]
         _clear_direct_paragraph_layout(paragraph)
-        paragraph.style = contract["styles"][kind]
+        paragraph.style = style
         # Run-level font normalization makes the paragraph style effective while
         # preserving bold/italic/underline/superscript/subscript and all text.
         for run in paragraph.runs:

@@ -5,6 +5,23 @@ description: Convert mathematics PDF handouts into editable Word. Preformat DOCX
 
 # Math PDF to Word: simple layout skill
 
+## First: preserve the source and account for every question
+
+Read [docs/EXERCISE_WORKFLOW.md](docs/EXERCISE_WORKFLOW.md) before preparing or editing a practice handout. Unless the user explicitly requests a subset, preserve the source's complete content and order: explanations, examples, every numbered question and full stem, conditions, choices, subquestions, formulas, tables, answer blanks, diagrams, illustrations and captions. A contents page, example heading or generated knowledge summary does not replace the actual question. Keep summaries already present in the source; do not add a new assistant-written summary or answers unless requested.
+
+Before editing, make a source-page inventory that records each page's sections, examples, question numbers and stem anchors, choices/subquestions, tables and figures, including cross-page items and genuinely blank pages. Map each source page to its corresponding final content. Use MinerU as a conversion aid, then check the output against the original PDF; OCR output alone does not establish completeness. Correct conversion omissions and recognition errors against the source. Preserve unclear or inconsistent source content and flag it in the report rather than guessing.
+
+For this user's local workflow, when no destination is specified and it exists, use `C:\Users\Lenovo\WPSDrive\1754907989\WPS企业云盘\深圳大学\我的企业文档\University\兼职2`. Preserve the original file and name. Use the same base name for the DOCX and report, and `_Word版.pdf` for the Word-exported PDF so it cannot overwrite the source. Current user instructions take priority.
+
+## Practice-page layout: include real working space
+
+- Put enough blank writing space after every question and independently solvable subquestion. Give comparable questions comparable space; allow more for long calculations, proofs and figure-based work. Do not compress questions to hit a target question count per page.
+- Start the first question on each page at the top of the text area. When a section or chapter heading belongs with that first question, place the heading at the top and follow it with the question. Keep the question hierarchy and necessary subquestion indentation.
+- If the final question on a page would not have enough room for its working space, move the question, its heading and any attached figure that fits with it to the next page. Keep a long question's parts and figures in source order.
+- Use Enter-created empty paragraphs for working space. Do not add manual page breaks or new keep-with-next, keep-together, or page-break-before settings by default. Preserve the source document's effective direct and inherited pagination settings. Only change these settings when the current user explicitly asks.
+- Put a question's figure after its complete stem and subquestions, adjacent to that question, with its original caption centered. Keep lecture illustrations with their explanatory text. Preserve all tables and images; do not replace a figure with a description.
+- OfficeMath is the default editable formula format. Do not use an AxMath workflow unless the current user explicitly requests AxMath and identifies the applicable workflow.
+
 ## Core rule: prevent layout defects before editing
 
 The working DOCX must be preformatted before Codex starts changing content. Do not create a bad layout and rely on the final audit to repair it.
@@ -146,6 +163,7 @@ Only deliver when audit status is accepted and the actual page/figure/math revie
 - scripts/mineru_handoff.py: preserve the raw MinerU DOCX and preformat the working copy before editing.
 - scripts/docx_styling.py: create/apply the preventive SIJI paragraph-style contract and extract safe styles from a teacher sample.
 - scripts/layout_cli.py: profile extraction, RapidOCR fallback, build, Word render and audit.
+- scripts/review_coverage.py: require exactly one completed review record for each source page.
 - scripts/docx_layout_check.py: last-resort DOCX paragraph-layout regression scanner.
 - tests: deterministic local checks without Word or OCR.
 

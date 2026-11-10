@@ -13,6 +13,7 @@ Features:
 - Preserve answer-parenthesis text and exact spaces; never globally normalize source whitespace.
 - Apply the same style contract automatically to RapidOCR-built DOCX candidates.
 - Keep mathematical text editable; preserve geometry diagrams as high-resolution crops.
+- Preserve every source question and figure, and plan writing space from the start; follow [the exercise workflow](docs/EXERCISE_WORKFLOW.md).
 - Refuse to mark a document accepted until source pages, rendered Word pages and final hashes are checked.
 - Retain a final DOCX layout scanner as a last-resort regression gate, not as the primary correction method.
 

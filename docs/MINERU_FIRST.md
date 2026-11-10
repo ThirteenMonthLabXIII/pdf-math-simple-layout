@@ -6,7 +6,7 @@ Set the Python executable once:
 $py = 'D:\\我的python\\python3.12\\python.exe'
 ~~~
 
-1. Export the entire source PDF using MinerU. Verify that every page and key problem appears in the editable DOCX.
+1. Read [EXERCISE_WORKFLOW.md](EXERCISE_WORKFLOW.md). Before drafting, map every source page, example, full question and its figures. Export the entire source PDF using MinerU; use the conversation's in-app browser when available, unless the user specifies another browser. Treat the export as an input to be checked, not as proof that the questions or figures are complete.
 
 2. If a teacher/reference Word sample is provided, extract its paragraph-style contract BEFORE preparing the handout:
 
@@ -45,6 +45,8 @@ The untouched export remains mineru_original.docx. Codex edits working.docx, whi
 
 Do not manually assign paragraph left/right/first-line indents or before/after spacing. Do not copy paragraph formatting from the raw MinerU DOCX. Do not globally trim, collapse, or replace spaces. Preserve answer parentheses and their exact source spacing; correct text only against the PDF. Inline formulas stay in their question/body paragraph; standalone OfficeMath paragraphs use SIJI Formula.
 
+Build full question stems, options, subquestions, tables and figures, not just example headings. Reserve working space with empty paragraphs as each question is laid out. Put the first question or its section heading at the top of the text area, and move a last question to the next page when it lacks working space. Preserve existing direct and inherited pagination settings; do not introduce page breaks or keep options unless explicitly requested.
+
 5. Render and inspect the output using Microsoft Word:
 
 ~~~powershell
@@ -65,7 +67,7 @@ The scanner checks direct and inherited style indents, paragraph spacing, and an
 8. Audit:
 
 ~~~powershell
-& $py scripts\\mineru_handoff.py audit --workspace "job1" --require-accepted
+& $py scripts\\mineru_handoff.py audit --workspace "job1" --docx "job1\\working.docx" --require-accepted
 ~~~
 
 Never deliver an unreviewed DOCX. OCR confidence is not proof of formula correctness; review mathematical symbols and diagrams against the source images.
