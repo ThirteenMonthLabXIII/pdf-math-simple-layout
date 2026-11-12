@@ -82,9 +82,9 @@
       "right_indent_twips": 0,
       "first_line_indent_twips": 0,
       "space_before_pt": 0,
+      "space_after_pt": 0,
       "line_spacing": 1.15,
-      "alignment": "left",
-      "space_after_pt": 7
+      "alignment": "left"
     },
     "caption": {
       "left_indent_twips": 0,
@@ -103,7 +103,25 @@
       "line_spacing": 1.15,
       "alignment": "center",
       "space_after_pt": 4
+    },
+    "question_start": {
+      "left_indent_twips": 0,
+      "right_indent_twips": 0,
+      "first_line_indent_twips": 0,
+      "space_before_pt": 0,
+      "line_spacing": 1.15,
+      "alignment": "left",
+      "space_after_pt": 7
     }
   },
-  "paragraph_policy_source": "safe_defaults; override with layout_cli.py profile --sample teacher-reference.docx"
+  "paragraph_policy_source": "safe_defaults; override with layout_cli.py profile --sample teacher-reference.docx",
+  "answer_space_policy": {
+    "simple_paragraphs": 2,
+    "standard_paragraphs": 3,
+    "calculation_paragraphs": 4,
+    "complex_paragraphs": 5,
+    "proof_paragraphs": 6,
+    "max_per_subquestion": 8
+  },
+  "answer_space_policy_note": "Counts are real empty Word paragraphs created with Enter. Every independent subquestion receives its own allowance; the total working space of a big question is the sum of its subquestions."
 }

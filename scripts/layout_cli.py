@@ -37,6 +37,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 from docx_layout_check import evaluate_layout_review, inspect_docx
 from docx_styling import apply_docx_styles, default_paragraph_policy, extract_paragraph_policy
+from question_layout import apply_question_layout, check_question_layout, check_word_pagination
 from review_coverage import complete_page_review
 
 SCHEMA = "math-simple-layout/1"
@@ -399,11 +400,36 @@ def make_document(data, profile: dict, result: Path, workdir: Path):
                 for _ in range(block.get("count", 1)):
                     doc.add_paragraph()
             elif typ == "page_break":
-                doc.add_page_break()
+                # Source PDF page boundaries are inventory markers, not Word page breaks.
+                continue
     pdf.close()
     result.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(result))
-    return apply_docx_styles(result, profile)
+    style_report = apply_docx_styles(result, profile)
+    question_layout_report = apply_question_layout(result, profile)
+    structural_check = check_question_layout(result, profile)
+    word_pagination_report = None
+    word_pagination_error = None
+    if structural_check["status"] == "ready_for_word_pagination_check":
+        try:
+            word_pagination_report = check_word_pagination(result)
+        except Exception as exc:
+            word_pagination_error = f"{type(exc).__name__}: {exc}"
+    if question_layout_report["question_group_count"] == 0:
+        preflight_status = "needs_question_mapping"
+    elif structural_check["status"] != "ready_for_word_pagination_check":
+        preflight_status = "needs_question_layout"
+    elif word_pagination_report is None:
+        preflight_status = "needs_word_pagination_check"
+    elif word_pagination_report["status"] != "accepted":
+        preflight_status = "needs_question_page_fit"
+    else:
+        preflight_status = "ready_for_content_review"
+    question_layout_report["structural_check"] = structural_check
+    question_layout_report["word_pagination"] = word_pagination_report
+    question_layout_report["word_pagination_error"] = word_pagination_error
+    question_layout_report["preflight_status"] = preflight_status
+    return {"style_policy": style_report, "question_layout": question_layout_report}
 
 
 def cmd_build(args):
@@ -414,13 +440,24 @@ def cmd_build(args):
     output = (args.output or ws / "candidate.docx").resolve()
     if output.exists() and not args.overwrite:
         raise FileExistsError(f"Refusing to overwrite existing candidate: {output}; pass --output new_name.docx")
-    style_report = make_document(data,profile,output,ws)
+    build_styles = make_document(data,profile,output,ws)
+    style_report = build_styles["style_policy"]
+    question_layout_report = build_styles["question_layout"]
+    ignored_source_page_breaks=sum(1 for page in data["pages"] for block in page["blocks"] if block.get("type")=="page_break")
     report={"schema":SCHEMA,"source_sha256":data["source_sha256"],"candidate":str(output),"candidate_sha256":sha256(output),
-            "style_policy":style_report,
+            "style_policy":style_report,"question_layout":question_layout_report,
+            "question_layout_preflight_status":question_layout_report["preflight_status"],
+            "answer_space_policy":profile.get("answer_space_policy", {}),
+            "ignored_source_page_breaks":ignored_source_page_breaks,
             "page_count":data["page_count"],"blocks":sum(len(p["blocks"]) for p in data["pages"]),"layout_errors":invalid,
             "unverified_pages":[p["page"] for p in data["pages"] if p.get("verified") is not True],"status":"candidate_not_approved"}
     save(ws / "build_report.json",report)
-    print(json.dumps({"output":str(output),"status":report["status"],"unverified_pages":report["unverified_pages"],"layout_errors":invalid},ensure_ascii=False))
+    print(json.dumps({"output":str(output),"status":report["status"],
+        "question_layout_preflight_status":question_layout_report["preflight_status"],
+        "question_groups":question_layout_report["question_group_count"],
+        "word_page_count":question_layout_report["word_pagination"]["word_page_count"] if question_layout_report["word_pagination"] else None,
+        "split_question_groups":question_layout_report["word_pagination"]["split_question_groups"] if question_layout_report["word_pagination"] else None,
+        "unverified_pages":report["unverified_pages"],"layout_errors":invalid},ensure_ascii=False))
 
 
 def cmd_crop(args):
@@ -473,15 +510,21 @@ def cmd_audit(args):
     docx_layout = inspect_docx(output)
     save(ws / "docx_layout_findings.json", docx_layout)
     layout_review = evaluate_layout_review(output, ws / "layout_review.json", docx_layout)
+    build_report = load(ws / "build_report.json") if (ws / "build_report.json").exists() else {}
+    question_layout_report = check_question_layout(output, {"answer_space_policy": build_report.get("answer_space_policy", {})})
+    word_pagination_report = check_word_pagination(output) if getattr(args, "word_pages", False) else None
     source_unchanged=sha256(Path(data["source_pdf"]))==data["source_sha256"]
     checks={"source_unchanged":source_unchanged,"all_pages_have_content":not bad_layout,"all_source_pages_verified":not unverified,
             "all_expected_text_present":not missing,"all_table_values_present":not missing_tables,"figure_count_matches":exp_images==actual_images,
-            "visual_review_complete":review_complete,"docx_layout_review_complete":layout_review["complete"]}
+            "visual_review_complete":review_complete,"docx_layout_review_complete":layout_review["complete"],
+            "question_layout_complete":question_layout_report["status"]=="ready_for_word_pagination_check",
+            "question_groups_same_page":word_pagination_report is not None and word_pagination_report["status"]=="accepted"}
     ready=all(checks.values())
     report={"schema":SCHEMA,"status":"accepted" if ready else "needs_review","checks":checks,"page_count":data["page_count"],
             "unverified_pages":unverified,"missing_text_blocks":missing[:50],"missing_table_values":missing_tables[:50],
             "expected_figures":exp_images,"actual_figures":actual_images,"layout_errors":bad_layout,"visually_checked_pages":checked,
             "docx_layout_findings":docx_layout["findings"],"docx_layout_review":layout_review,
+            "question_layout":question_layout_report,"word_pagination":word_pagination_report,
             "source_sha256":data["source_sha256"],"candidate_sha256":expected_hash,"candidate":str(output)}
     save(ws/"audit_report.json",report)
     print(json.dumps({"report":str(ws/"audit_report.json"),"status":report["status"],"checks":checks,"layout_errors":bad_layout[:4]},ensure_ascii=False))
@@ -538,7 +581,7 @@ def main(argv=None):
     p.add_argument("--allow-incomplete",action="store_true");p.add_argument("--overwrite",action="store_true")
     p.set_defaults(func=cmd_build)
     p=sub.add_parser("audit",help="Verify source, text, table, figures, and manually approved pages")
-    p.add_argument("--workspace",required=True,type=Path);p.add_argument("--docx",type=Path);p.set_defaults(func=cmd_audit)
+    p.add_argument("--workspace",required=True,type=Path);p.add_argument("--docx",type=Path);p.add_argument("--word-pages",action="store_true");p.set_defaults(func=cmd_audit)
     p=sub.add_parser("render",help="Word COM preview, isolated Word instance; no user documents touched")
     p.add_argument("--docx",required=True,type=Path);p.add_argument("--output",required=True,type=Path)
     p.add_argument("--dpi",type=int,default=140);p.set_defaults(func=cmd_render)

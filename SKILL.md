@@ -13,22 +13,37 @@ Before editing, make a source-page inventory that records each page's sections, 
 
 For this user's local workflow, when no destination is specified and it exists, use `C:\Users\Lenovo\WPSDrive\1754907989\WPS企业云盘\深圳大学\我的企业文档\University\兼职2`. Preserve the original file and name. Use the same base name for the DOCX and report, and `_Word版.pdf` for the Word-exported PDF so it cannot overwrite the source. Current user instructions take priority.
 
-## Practice-page layout: include real working space
+## Practice-page layout: plan complete questions before editing
 
-- Put enough blank writing space after every question and independently solvable subquestion. Give comparable questions comparable space; allow more for long calculations, proofs and figure-based work. Do not compress questions to hit a target question count per page.
-- Start the first question on each page at the top of the text area. When a section or chapter heading belongs with that first question, place the heading at the top and follow it with the question. Keep the question hierarchy and necessary subquestion indentation.
-- If the final question on a page would not have enough room for its working space, move the question, its heading and any attached figure that fits with it to the next page. Keep a long question's parts and figures in source order.
-- Use Enter-created empty paragraphs for working space. Do not add manual page breaks or new keep-with-next, keep-together, or page-break-before settings by default. Preserve the source document's effective direct and inherited pagination settings. Only change these settings when the current user explicitly asks.
-- Put a question's figure after its complete stem and subquestions, adjacent to that question, with its original caption centered. Keep lecture illustrations with their explanatory text. Preserve all tables and images; do not replace a figure with a description.
-- OfficeMath is the default editable formula format. Do not use an AxMath workflow unless the current user explicitly requests AxMath and identifies the applicable workflow.
+These are hard requirements applied during prepare/build, before Codex edits the document. A final audit only verifies them; it is not the first time the rules are applied.
+
+1. **One complete question stays on one page.** A question block includes its heading, number, complete stem, conditions, every subquestion, formulas, choices, tables, related figures and captions, plus all answer space. No part may spill onto the next page.
+2. **Reserve answer space for every solvable item.** Each independently solvable subquestion gets its own writing area. For a big question, total answer space is the sum of its subquestion allowances, so more subquestions mean more room. If a question has no subquestions, allocate space based on the whole question's complexity.
+3. **Answer space is made only with Enter.** Each writing line is a genuinely empty Word paragraph. Do not create it with Shift+Enter, manual line breaks, underscores, borders, tables, tabs, text boxes, shapes, or paragraph-before/after spacing. Empty paragraphs contain no text, tabs, breaks, drawings or formulas.
+4. **Every page starts at the top of the text area.** The first content line and its question number/label start flush left: zero left indent, zero first-line indent, and no leading spaces or tabs. A heading that belongs to the question travels with it.
+5. **If the last question cannot fit with its full answer area, move the whole question block to the next page.** Never leave its stem on the previous page and its subquestions or answer area on the next.
+6. **A question that is taller than a full page is still not allowed to split.** First compact only inside that question: remove redundant source blank lines, reduce its attached image proportionally while keeping it legible, tighten excess paragraph spacing, and reduce font only as a last resort (never below 9 pt). Keep at least one real empty paragraph for every independent subquestion. If it still cannot fit, stop and report that question as blocked; do not deliver a split question.
+
+Default answer-space budget (one count = one empty Enter paragraph):
+- Simple choice/fill-in/short response: 2.
+- Standard question: 3.
+- Calculation or equation-solving: 4.
+- Long application question, table/diagram reasoning: 5.
+- Proof, geometry proof or multi-step derivation: 6.
+- Each subquestion is estimated independently; the parent question's total is the sum of its subquestion budgets. These defaults are configurable in references/style_profile.json.
+
+The planner adds an invisible keep-together / keep-with-next chain to each complete question block so Word moves the question and its answer paragraphs together. Those properties control pagination only; they do not create writing space. Never use manual page breaks or pageBreakBefore to fake the layout.
+
+Put a question's figure after its complete stem and subquestions, adjacent to that question, with its original caption centered. Keep lecture illustrations with their explanatory text. Preserve all tables and images; do not replace a figure with a description. OfficeMath is the default editable formula format. Do not use an AxMath workflow unless the current user explicitly requests AxMath and identifies the applicable workflow.
 
 ## Core rule: prevent layout defects before editing
 
 The working DOCX must be preformatted before Codex starts changing content. Do not create a bad layout and rely on the final audit to repair it.
 
-The pipeline has two separate responsibilities:
-1. **Preventive formatting:** create safe paragraph styles, clear unsafe source paragraph overrides, and make the intended hierarchy explicit before content editing.
-2. **Last-resort regression gate:** detect accidental changes that occur later. This gate is not the primary formatting method.
+The pipeline has three responsibilities:
+1. **Preventive question planning:** identify question blocks, allocate answer paragraphs, and bind each full question to one page before content editing.
+2. **Preventive style formatting:** create safe paragraph styles and make the intended hierarchy and flush-left page starts explicit.
+3. **Regression gates:** verify the answer-space counts and real Word pagination after edits. These checks confirm the rules were maintained; they do not replace the pre-edit planning step.
 
 ## Default: MinerU-first
 
@@ -38,22 +53,32 @@ If a teacher/reference Word sample exists, extract a controlled style profile fi
 
 ~~~powershell
 $py = 'D:\我的python\python3.12\python.exe'
-& $py scripts\layout_cli.py profile --sample "teacher-sample.docx" --output "style_profile.json"
+$profile = "references\style_profile.json"
+if (Test-Path "teacher-sample.docx") {
+    $profile = Join-Path $env:TEMP "pdf-math-style-profile.json"
+    & $py scripts\layout_cli.py profile --sample "teacher-sample.docx" --output $profile
+}
 ~~~
 
 Then prepare the handout using that profile:
 
 ~~~powershell
-& $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1" --profile "style_profile.json"
+& $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1" --profile $profile
 ~~~
 
-When no teacher sample exists, omit --profile; the built-in references/style_profile.json supplies safe defaults.
+When no teacher sample exists, keep $profile pointed at references/style_profile.json; this same selected profile must be passed to prepare and every later question-layout command.
 
 The prepare command:
 - preserves the raw MinerU export as mineru_original.docx;
 - creates working.docx as a separate copy;
-- applies the preventive SIJI paragraph-style contract to working.docx before Codex opens it;
-- records the applied rules and hashes in style_policy.json.
+- applies the SIJI paragraph-style contract;
+- runs scripts/question_layout.py through the shared planner before Codex opens the file;
+- inserts real empty answer paragraphs after every question/subquestion, with more paragraphs for more complex work;
+- applies the page-safe question chain and flush-left question-start style;
+- records the question groups, required/existing/inserted answer paragraphs and hashes in question_layout_plan.json and style_policy.json;
+- runs a structural answer-space check and a real Microsoft Word pagination preflight before it reports the file ready for editing.
+
+Only preflight_status=ready_for_codex_formatting allows Codex to begin content editing. If prepare reports needs_question_mapping, needs_question_layout, needs_question_page_fit or needs_word_pagination_check, stop before editing. Map missed questions, adjust the oversized question block or restore the Word pagination environment, rerun prepare/planning, and require a clean preflight. Never silently skip a question or defer this to the final audit.
 
 Do not bypass this step or start editing the raw MinerU export.
 
@@ -66,7 +91,8 @@ The preformatter creates these named Word paragraph styles:
 | SIJI Body | Ordinary explanatory text |
 | SIJI Title | Lecture/title lines |
 | SIJI Heading | Section headings |
-| SIJI Question | Numbered question stems |
+| SIJI Question Start | First paragraph/number of a complete question block; always flush left |
+| SIJI Question | Other numbered question stems |
 | SIJI Subquestion | Numbered subquestions such as （1） |
 | SIJI Formula | Standalone OfficeMath formula paragraphs |
 | SIJI AnswerBlank | Answer-only blank lines |
@@ -85,32 +111,43 @@ Each style explicitly controls left/right/first-line indentation, before/after s
 
 ### Question hierarchy
 
-- Numbered questions use SIJI Question.
-- Subquestions use SIJI Subquestion.
-- The default subquestion indent is 600 twips. A provided teacher sample can override this through median per-kind style extraction.
+- The first paragraph of every complete question block uses SIJI Question Start: zero left indent and zero first-line indent, so a question number at the top of a page is flush left.
+- Other numbered question stems use SIJI Question; child items use SIJI Subquestion.
+- Subquestions may retain their normal hierarchy indent inside a question. If a subquestion is itself the first item of a new question block, it is promoted to SIJI Question Start and flush left.
+- The default subquestion indent is 600 twips. A provided teacher sample can override normal subquestion styling, but it cannot override the flush-left Question Start style.
 - A sample paragraph with any indentation over 1000 twips is excluded from style learning. This prevents an anomalous source formula from contaminating the whole style profile.
 - Do not flatten all paragraph indents to zero. Use the prepared hierarchy styles.
 
 ### Answer blanks and source text
 
-- Answer parentheses and their spaces are source content, not decorative formatting.
-- Preserve the exact parentheses and number of spaces shown in the source PDF.
-- Never run global whitespace normalization, repeated-space collapsing, global strip(), or find/replace on answer blanks.
-- The preformatter changes paragraph/run formatting only. It must not rewrite paragraph text or OfficeMath XML.
+- Answer parentheses and their spaces already present in the source are content; preserve them exactly.
+- New working space is separate from source answer blanks. The planner creates it as genuinely empty Word paragraphs (w:p) with the SIJI AnswerBlank style. One empty paragraph represents one normal writing line.
+- SIJI AnswerBlank has zero before/after spacing and normal body line spacing. It must not use borders, underlines, tabs, underscores, tables, shapes or manual line breaks.
+- Never run global whitespace normalization, repeated-space collapsing, global strip(), or find/replace on source answer blanks.
+- The style preformatter does not rewrite existing paragraph text or OfficeMath XML. The question planner only inserts new empty paragraphs and pagination metadata.
 - When editing a paragraph containing OfficeMath, do not replace the entire paragraph text with paragraph.text = ...; that can discard embedded equation nodes. Edit only the relevant text runs and preserve the math XML.
 
 ### Codex editing contract
 
-After prepare, Codex must reuse the named styles for every inserted paragraph. When using python-docx, assign the matching style and leave paragraph_format indentation/spacing properties alone. When using Word, select the matching named style from the style list.
+After prepare, Codex must reuse the named styles for every inserted paragraph. When using python-docx, assign the matching style and leave paragraph_format indentation/spacing properties alone. When using Word, select the matching named style from the style list. Do not hand-build answer-space formatting or manually add page breaks. If content editing adds/removes questions or subquestions, rerun the question planner so the new structure receives its answer paragraphs and one-page chain.
 
 Do not:
 - set paragraph_format.left_indent, right_indent, first_line_indent, space_before, space_after, or line_spacing ad hoc;
 - paste paragraph formatting from mineru_original.docx;
 - use Format Painter from a suspicious formula paragraph;
 - globally normalize spaces or paragraph text;
-- create new formula paragraphs with Normal style and manual indentation.
+- create new formula paragraphs with Normal style and manual indentation;
+- create answer space using Shift+Enter, underscores, borders, tables, tabs, or paragraph spacing;
+- split a question across pages or add manual page breaks to force a visual result.
 
-Correct OCR/formula content by comparing the PDF original. Retain numbering, subquestions, data, tables, captions, and geometry diagrams in the original order. When geometry crops are needed, take them from the source PDF at high resolution and keep them adjacent to their corresponding question. Never infer unclear mathematics from context.
+After all content edits, run the question planner before rendering:
+
+~~~powershell
+& $py scripts\question_layout.py apply --docx "job1\working.docx" --profile $profile
+& $py scripts\question_layout.py check --docx "job1\working.docx" --profile $profile
+~~~
+
+This is the planned layout pass for any new/changed question content, not a repair-after-failure step. Correct OCR/formula content by comparing the PDF original. Retain numbering, subquestions, data, tables, captions, and geometry diagrams in the original order. When geometry crops are needed, take them from the source PDF at high resolution and keep them adjacent to their corresponding question. Never infer unclear mathematics from context.
 
 A formatting reference DOCX is for styles only, not content. Do not copy its question text into the handout.
 
@@ -125,13 +162,14 @@ Only if MinerU is unavailable or its DOCX export fails. Do not repeat OCR after 
 & $py scripts\layout_cli.py build --workspace "fallback_job" --profile "references/style_profile.json"
 ~~~
 
-The build command applies the same SIJI paragraph-style contract to the generated candidate before review. If a teacher sample is available, create a profile with layout_cli.py profile and pass it to build.
+The build command applies the same SIJI paragraph-style contract, the same question-layout planner, and a real Word pagination preflight before review. Its build_report.json records the preflight status and any split question groups. Source PDF page boundaries are inventory markers, not Word page breaks; the build does not insert a page break at every source page. Do not proceed to content review until the preflight reports ready_for_content_review. If a teacher sample is available, create a profile with layout_cli.py profile and pass it to build.
 
 ## Last-resort layout regression gate
 
 The preventive style contract is the default. Keep the scanner as a final safety net on both MinerU and RapidOCR routes.
 
 ~~~powershell
+& $py scripts\question_layout.py check --docx "job1\working.docx" --profile $profile --word-pages
 & $py scripts\docx_layout_check.py check --docx "job1\working.docx" --output "job1\docx_layout_findings.json"
 & $py scripts\docx_layout_check.py template --docx "job1\working.docx" --output "job1\layout_review.json"
 ~~~
@@ -153,7 +191,7 @@ Render the result with genuine Microsoft Word (Windows COM):
 Compare all source PDF pages with all actual output Word pages. Record the review accurately in job1/mineru_review.json, including the last candidate SHA-256 and all page checks. Never tick review fields automatically.
 
 ~~~powershell
-& $py scripts\mineru_handoff.py audit --workspace "job1" --require-accepted
+& $py scripts\mineru_handoff.py audit --workspace "job1" --require-accepted --word-pages
 ~~~
 
 Only deliver when audit status is accepted and the actual page/figure/math review has been performed. After editing the Word file again, the old review hash is invalid.
@@ -162,6 +200,7 @@ Only deliver when audit status is accepted and the actual page/figure/math revie
 
 - scripts/mineru_handoff.py: preserve the raw MinerU DOCX and preformat the working copy before editing.
 - scripts/docx_styling.py: create/apply the preventive SIJI paragraph-style contract and extract safe styles from a teacher sample.
+- scripts/question_layout.py: allocate Enter-created answer space, keep every complete question on one page, and verify real Word pagination.
 - scripts/layout_cli.py: profile extraction, RapidOCR fallback, build, Word render and audit.
 - scripts/review_coverage.py: require exactly one completed review record for each source page.
 - scripts/docx_layout_check.py: last-resort DOCX paragraph-layout regression scanner.

@@ -36,6 +36,7 @@ STYLE_NAMES = {
     "title": "SIJI Title",
     "heading": "SIJI Heading",
     "question": "SIJI Question",
+    "question_start": "SIJI Question Start",
     "subquestion": "SIJI Subquestion",
     "formula": "SIJI Formula",
     "answer_blank": "SIJI AnswerBlank",
@@ -56,9 +57,9 @@ ALIGNMENT_NAMES = {
 }
 CAPTION_RE = re.compile(r"^图\s*\d+")
 TITLE_RE = re.compile(r"^第\s*[一二三四五六七八九十百千万\d]+\s*讲")
-HEADING_RE = re.compile(r"^(?:【?(?:例题|练习|知识点|课后练习)|知识点[一二三四五六七八九十0-9])")
-SUBQUESTION_RE = re.compile(r"^[（(][1-9][0-9]*[）)]")
-QUESTION_RE = re.compile(r"^\d+[．.、](?=\S)")
+HEADING_RE = re.compile(r"^(?:【?(?:例题|练习|拓展|知识点|课后练习|课后作业|巩固练习|综合练习)|知识点[一二三四五六七八九十0-9])")
+SUBQUESTION_RE = re.compile(r"^\s*[（(]\s*[1-9][0-9]*\s*[）)]")
+QUESTION_RE = re.compile(r"^\s*\d+\s*[．.、)）]\s*(?=\S)")
 ANSWER_ONLY_RE = re.compile(r"^(?:答案|答)\s*[:：]?\s*[（(][ \t\u3000]*[）)]$")
 MAX_SAMPLE_INDENT_TWIPS = 1000
 
@@ -82,9 +83,10 @@ def default_paragraph_policy() -> dict:
         "title": style(10, alignment="center", font_size_key="title_pt", bold=True),
         "heading": style(4, space_before_pt=6, font_size_key="heading_pt", bold=True),
         "question": style(7),
+        "question_start": style(7),
         "subquestion": style(10, left_indent_twips=600),
         "formula": style(7, alignment="left"),
-        "answer_blank": style(7),
+        "answer_blank": style(0),
         "caption": style(4, alignment="center"),
         "figure": style(4, alignment="center"),
     }
@@ -105,6 +107,11 @@ def _has_math(paragraph) -> bool:
 def classify_paragraph(paragraph) -> str:
     """Classify without mutating or normalizing any source text."""
     text = (paragraph.text or "").strip()
+    style_name = paragraph.style.name if paragraph.style is not None else ""
+    if style_name == STYLE_NAMES["question_start"]:
+        return "question_start"
+    if style_name == STYLE_NAMES["answer_blank"] and not text:
+        return "answer_blank"
     if any(node.tag in DRAWING_TAGS for node in paragraph._p.iter()):
         return "figure"
     if paragraph.style is not None and "caption" in paragraph.style.name.lower():
@@ -311,6 +318,14 @@ def _apply_style_contract(document, profile: dict) -> dict:
         if kind in policy and isinstance(values, dict):
             policy[kind].update({key: value for key, value in values.items()
                 if allow_pagination or key not in {"keep_with_next", "keep_together"}})
+
+    # Question starts are always flush-left, regardless of a teacher sample.
+    policy["question_start"]["left_indent_twips"] = 0
+    policy["question_start"]["first_line_indent_twips"] = 0
+    policy["question_start"]["alignment"] = "left"
+
+    # Answer space must be real empty paragraphs, never spacing inherited from a sample.
+    policy["answer_blank"] = default_paragraph_policy()["answer_blank"]
 
     styles = {}
 

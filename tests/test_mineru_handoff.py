@@ -33,7 +33,7 @@ class MinerUHandoffTest(unittest.TestCase):
 
             docx_path = folder / "mineru.docx"
             d = Document()
-            d.add_paragraph("Synthetic sample question 1: x + y = 3")
+            d.add_paragraph("1．Synthetic sample question: x + y = 3")
             formula = d.add_paragraph()
             formula.paragraph_format.left_indent = Twips(1687)
             formula._p.append(parse_xml(MATH_XML))
@@ -48,6 +48,12 @@ class MinerUHandoffTest(unittest.TestCase):
                 str(pdf_path), "--mineru-docx", str(docx_path),
                 "--workspace", str(workspace)], capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
+            prepare_report = json.loads(proc.stdout)
+            self.assertEqual(prepare_report["status"], "ready_for_codex_formatting")
+            question_plan = json.loads((workspace / "question_layout_plan.json").read_text(encoding="utf-8"))
+            self.assertEqual(question_plan["preflight_status"], "ready_for_codex_formatting")
+            self.assertEqual(question_plan["word_pagination"]["status"], "accepted")
+            self.assertEqual(question_plan["word_pagination"]["split_question_groups"], [])
             self.assertTrue((workspace / "mineru_original.docx").exists())
             self.assertTrue((workspace / "working.docx").exists())
             self.assertEqual(len(list((workspace / "source_pages").glob("*.png"))), 1)
@@ -101,7 +107,7 @@ class MinerUHandoffTest(unittest.TestCase):
             (workspace / "layout_review.json").write_text(json.dumps(layout_review), encoding="utf-8")
 
             accepted = subprocess.run([sys.executable, str(CLI), "audit",
-                "--workspace", str(workspace), "--require-accepted"], capture_output=True, text=True)
+                "--workspace", str(workspace), "--require-accepted", "--word-pages"], capture_output=True, text=True)
             self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
             final_report = json.loads((workspace / "mineru_audit.json").read_text("utf-8"))
             self.assertEqual(final_report["status"], "accepted")

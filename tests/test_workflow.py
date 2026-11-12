@@ -43,7 +43,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(len(d.tables),1)
         self.assertEqual(len(d.inline_shapes),1)
         self.assertEqual(d.paragraphs[0].style.name,'SIJI Title')
-        self.assertEqual(d.paragraphs[1].style.name,'SIJI Question')
+        self.assertEqual(d.paragraphs[1].style.name,'SIJI Question Start')
         self.assertEqual(d.paragraphs[2].style.name,'SIJI Subquestion')
         self.assertEqual(d.paragraphs[2].style.paragraph_format.left_indent.twips,600)
         figure_paragraph=next(p for p in d.paragraphs if any(node.tag.endswith('drawing') for node in p._p.iter()))
@@ -53,7 +53,9 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(caption_paragraph.style.name,'SIJI Caption')
         build_report=c.load(self.ws/'build_report.json')
         self.assertEqual(build_report['style_policy']['schema'],'docx-style-policy/1')
-        c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None)))
+        self.assertEqual(build_report['question_layout_preflight_status'],'ready_for_content_review')
+        self.assertEqual(build_report['question_layout']['word_pagination']['split_question_groups'],[])
+        c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None,word_pages=True)))
         report=c.load(self.ws/'audit_report.json')
         self.assertEqual(report['status'],'needs_review')
         self.assertFalse(report['checks']['visual_review_complete'])
@@ -64,7 +66,7 @@ class WorkflowTest(unittest.TestCase):
             for key in ('source_checked','output_checked','text_math_checked','figures_checked'):
                 row[key]=True
         c.save(self.ws/'visual_review.json',review)
-        c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None)))
+        c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None,word_pages=True)))
         report=c.load(self.ws/'audit_report.json')
         self.assertEqual(report['status'],'needs_review')
         self.assertFalse(report['checks']['docx_layout_review_complete'])
@@ -74,7 +76,7 @@ class WorkflowTest(unittest.TestCase):
         layout_review['reviewer']='Tester'
         layout_review['findings']=[]
         c.save(self.ws/'layout_review.json',layout_review)
-        c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None)))
+        c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None,word_pages=True)))
         self.assertEqual(c.load(self.ws/'audit_report.json')['status'],'accepted')
 
     def test_preflight_does_not_modify_source(self):

@@ -6,6 +6,7 @@ import pymupdf
 from docx import Document
 from docx_layout_check import evaluate_layout_review, inspect_docx
 from docx_styling import apply_docx_styles
+from question_layout import apply_question_layout, check_question_layout, check_word_pagination
 from review_coverage import complete_page_review
 
 for stream in (sys.stdout, sys.stderr):
@@ -44,24 +45,56 @@ def prepare(args):
     profile_path = args.profile.resolve(strict=True) if args.profile else default_profile
     profile = json.loads(profile_path.read_text(encoding="utf-8")) if profile_path.is_file() else {}
     style_report = apply_docx_styles(ws/"working.docx", profile)
+    question_layout_report = apply_question_layout(ws/"working.docx", profile)
+    question_structure_check = check_question_layout(ws/"working.docx", profile)
+    word_pagination_report = None
+    word_pagination_error = None
+    if question_structure_check["status"] == "ready_for_word_pagination_check":
+        try:
+            word_pagination_report = check_word_pagination(ws/"working.docx")
+        except Exception as exc:
+            word_pagination_error = f"{type(exc).__name__}: {exc}"
+    if question_layout_report["question_group_count"] == 0:
+        preflight_status = "needs_question_mapping"
+    elif question_structure_check["status"] != "ready_for_word_pagination_check":
+        preflight_status = "needs_question_layout"
+    elif word_pagination_report is None:
+        preflight_status = "needs_word_pagination_check"
+    elif word_pagination_report["status"] != "accepted":
+        preflight_status = "needs_question_page_fit"
+    else:
+        preflight_status = "ready_for_codex_formatting"
+    question_layout_report["structural_check"] = question_structure_check
+    question_layout_report["word_pagination"] = word_pagination_report
+    question_layout_report["word_pagination_error"] = word_pagination_error
+    question_layout_report["preflight_status"] = preflight_status
+    save(ws/"question_layout_plan.json", question_layout_report)
     save(ws/"style_policy.json", {
         "profile_path": str(profile_path) if profile_path.is_file() else None,
         "profile_sha256": sha(profile_path) if profile_path.is_file() else None,
         **style_report,
+        "question_layout": question_layout_report,
     })
     save(ws/"mineru_manifest.json",{"source_pdf":str(pdf),"source_sha256":sha(pdf),
         "source_pages":total,"raw_sha256":sha(ws/"mineru_original.docx"),
         "working_docx_sha256":sha(ws/"working.docx"),
         "style_policy_schema":style_report["schema"],
+        "question_layout_schema":question_layout_report["schema"],
+        "question_layout_preflight_status":preflight_status,
         "raw_stats":s})
     save(ws/"mineru_review.json",{"candidate_sha256":"","word_preview_checked":False,
         "pages":[{"pdf_page":i,"content_checked":False,"formulas_checked":False,"figures_checked":False}
                  for i in range(1,total+1)]})
     save(ws/"layout_review.json",{"schema":"docx-layout-review/1","candidate_sha256":"",
         "checked":False,"reviewer":"","findings":[]})
-    print(json.dumps({"status":"ready_for_codex_formatting","workspace":str(ws),
+    print(json.dumps({"status":preflight_status,"workspace":str(ws),
         "working_docx":str(ws/"working.docx"),"source_pages":total,"mineru_stats":s,
-        "preformatted":True,"style_policy":style_report["paragraphs_by_style"]},ensure_ascii=False))
+        "preformatted":True,"style_policy":style_report["paragraphs_by_style"],
+        "question_layout_groups":question_layout_report["question_group_count"],
+        "inserted_answer_paragraphs":question_layout_report["inserted_empty_paragraphs"],
+        "word_page_count":word_pagination_report["word_page_count"] if word_pagination_report else None,
+        "split_question_groups":word_pagination_report["split_question_groups"] if word_pagination_report else None,
+        "word_pagination_error":word_pagination_error},ensure_ascii=False))
 
 def audit(args):
     ws=args.workspace.resolve(strict=True)
@@ -76,6 +109,11 @@ def audit(args):
     layout_report=inspect_docx(doc)
     save(ws/"docx_layout_findings.json",layout_report)
     layout_review=evaluate_layout_review(doc,ws/"layout_review.json",layout_report)
+    policy_data=json.loads((ws/"style_policy.json").read_text(encoding="utf-8"))
+    profile_path=Path(policy_data["profile_path"]) if policy_data.get("profile_path") else None
+    profile=json.loads(profile_path.read_text(encoding="utf-8")) if profile_path and profile_path.is_file() else {}
+    question_layout_report=check_question_layout(doc,profile)
+    word_pagination_report=check_word_pagination(doc) if args.word_pages else None
     checks={"source_unchanged":sha(Path(m["source_pdf"]))==m["source_sha256"],
         "source_page_count_matches":source_page_count_matches,
         "mineru_raw_unchanged":sha(ws/"mineru_original.docx")==m["raw_sha256"],
@@ -83,12 +121,16 @@ def audit(args):
         "current_document_reviewed":r.get("candidate_sha256")==sha(doc),
         "word_preview_checked":r.get("word_preview_checked") is True,
         "all_pdf_pages_reviewed":checked,
-        "docx_layout_review_complete":layout_review["complete"]}
+        "docx_layout_review_complete":layout_review["complete"],
+        "question_layout_complete":question_layout_report["status"]=="ready_for_word_pagination_check",
+        "question_groups_same_page":word_pagination_report is not None and word_pagination_report["status"]=="accepted"}
     warnings=[]
     if s["images"]==0: warnings.append("No images in Word: check geometry drawings")
     if s["chars"]<m["raw_stats"]["chars"]//2: warnings.append("Over 50% of MinerU text missing")
     status="accepted" if all(checks.values()) and not warnings else "needs_review"
     report={"status":status,"checks":checks,"warnings":warnings,"docx_stats":s,
+        "word_pagination":word_pagination_report,
+        "question_layout":question_layout_report,
         "docx_layout_findings":layout_report["findings"],"docx_layout_review":layout_review}
     save(ws/"mineru_audit.json",report)
     print(json.dumps(report,ensure_ascii=False))
@@ -102,5 +144,5 @@ if __name__=="__main__":
     p.add_argument("--workspace",type=Path,required=True);p.add_argument("--profile",type=Path)
     p.set_defaults(f=prepare)
     a=cmd.add_parser("audit");a.add_argument("--workspace",type=Path,required=True)
-    a.add_argument("--docx",type=Path);a.add_argument("--require-accepted",action="store_true");a.set_defaults(f=audit)
+    a.add_argument("--docx",type=Path);a.add_argument("--require-accepted",action="store_true");a.add_argument("--word-pages",action="store_true");a.set_defaults(f=audit)
     o=ap.parse_args();o.f(o)
