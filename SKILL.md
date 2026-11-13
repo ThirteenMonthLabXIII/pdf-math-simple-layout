@@ -5,6 +5,22 @@ description: Convert mathematics PDF handouts into editable Word. Preformat DOCX
 
 # Math PDF to Word: simple layout skill
 
+## START HERE — new conversation entry
+
+For every new PDF-to-Word task, use this repository as the single source of truth:
+
+1. Read this complete SKILL.md.
+2. Read the complete docs/EXERCISE_WORKFLOW.md. It contains the mandatory question, answer-space, image-size and pagination rules.
+3. Choose only the matching route:
+   - MinerU DOCX: read docs/MINERU_FIRST.md.
+   - RapidOCR fallback / layout.json: read docs/WORKFLOW.md.
+4. If a teacher formatting sample is supplied, also read docs/REFERENCE.md. Read docs/INSTALL.md only for installation work.
+5. Follow the existing scripts. Do not search unrelated work folders, revive old workflow copies, or create a second processing pipeline.
+
+**Fixed production order:** preserve source → convert once with MinerU → set image sizes automatically → apply paragraph styles and question/answer-space plan → run the real Word pagination preflight → edit content → rerun the question planner only if question structure changed → perform the required source-bound acceptance once.
+
+Both production routes apply the image-size rule automatically before question layout and pagination. Do not resize images later as a separate repair pass. See the image-size rule below and docs/EXERCISE_WORKFLOW.md.
+
 ## First: preserve the source and account for every question
 
 Read [docs/EXERCISE_WORKFLOW.md](docs/EXERCISE_WORKFLOW.md) before preparing or editing a practice handout. Unless the user explicitly requests a subset, preserve the source's complete content and order: explanations, examples, every numbered question and full stem, conditions, choices, subquestions, formulas, tables, answer blanks, diagrams, illustrations and captions. A contents page, example heading or generated knowledge summary does not replace the actual question. Keep summaries already present in the source; do not add a new assistant-written summary or answers unless requested.
@@ -22,7 +38,7 @@ These are hard requirements applied during prepare/build, before Codex edits the
 3. **Answer space is made only with Enter.** Each writing line is a genuinely empty Word paragraph. Do not create it with Shift+Enter, manual line breaks, underscores, borders, tables, tabs, text boxes, shapes, or paragraph-before/after spacing. Empty paragraphs contain no text, tabs, breaks, drawings or formulas.
 4. **Every page starts at the top of the text area.** The first content line and its question number/label start flush left: zero left indent, zero first-line indent, and no leading spaces or tabs. A heading that belongs to the question travels with it.
 5. **If the last question cannot fit with its full answer area, move the whole question block to the next page.** Never leave its stem on the previous page and its subquestions or answer area on the next.
-6. **A question that is taller than a full page is still not allowed to split.** First compact only inside that question: remove redundant source blank lines, reduce its attached image proportionally while keeping it legible, tighten excess paragraph spacing, and reduce font only as a last resort (never below 9 pt). Keep at least one real empty paragraph for every independent subquestion. If it still cannot fit, stop and report that question as blocked; do not deliver a split question.
+6. **A question that is taller than a full page is still not allowed to split.** Its figures already receive their final display dimensions during the first build, before pagination. Do not start a later image-resize repair cycle. Keep at least one real empty paragraph for every independent subquestion. If it still cannot fit, stop and report that question as blocked; do not deliver a split question.
 
 Default answer-space budget (one count = one empty Enter paragraph):
 - Simple choice/fill-in/short response: 2.
@@ -35,6 +51,18 @@ Default answer-space budget (one count = one empty Enter paragraph):
 The planner adds an invisible keep-together / keep-with-next chain to each complete question block so Word moves the question and its answer paragraphs together. Those properties control pagination only; they do not create writing space. Never use manual page breaks or pageBreakBefore to fake the layout.
 
 Put a question's figure after its complete stem and subquestions, adjacent to that question, with its original caption centered. Keep lecture illustrations with their explanatory text. Preserve all tables and images; do not replace a figure with a description. OfficeMath is the default editable formula format. Do not use an AxMath workflow unless the current user explicitly requests AxMath and identifies the applicable workflow.
+
+### Image size is decided during the first build
+
+Both supported routes call scripts/image_sizing.py before question grouping, answer-space planning and Word pagination. This is a production step, not a final audit or repair stage.
+
+- Within each lecture, existing images with a displayed width above 0 and up to 6.0 cm form the reference set. Their median width is the lecture's reference size.
+- Images wider than 6.0 cm in that lecture are reduced to that median width. Images at or below 6.0 cm keep their current size; they are never enlarged or normalized.
+- If a lecture has no reference image, use the median of eligible small images across the document. If the document has no eligible reference image, use the 4.05 cm fallback.
+- Preserve each image's aspect ratio. Only Word display dimensions change; embedded image bytes and source resolution remain untouched.
+- MinerU prepare and RapidOCR build use the same policy. Defaults live in references/style_profile.json and can be overridden through image_size_policy in a supplied profile.
+- If a figure is added or replaced after preparation, apply the same sizing function once to the updated working DOCX before rerunning question layout. Text-only edits do not trigger image resizing.
+- Do not add a separate image-size audit, blanket resize command, or repeated resize/check loop after pagination. The existing final page review checks source-content correctness and actual pagination; it is not where image-sizing rules are first discovered.
 
 ## Core rule: prevent layout defects before editing
 

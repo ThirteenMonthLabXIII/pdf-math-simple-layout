@@ -53,6 +53,8 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(caption_paragraph.style.name,'SIJI Caption')
         build_report=c.load(self.ws/'build_report.json')
         self.assertEqual(build_report['style_policy']['schema'],'docx-style-policy/1')
+        self.assertEqual(build_report['image_sizing']['schema'],'image-size-policy/1')
+        self.assertEqual(build_report['image_sizing']['resized_count'],0)
         self.assertEqual(build_report['question_layout_preflight_status'],'ready_for_content_review')
         self.assertEqual(build_report['question_layout']['word_pagination']['split_question_groups'],[])
         c.cmd_audit(type('A',(),dict(workspace=self.ws,docx=None,word_pages=True)))

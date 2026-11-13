@@ -50,6 +50,8 @@ class MinerUHandoffTest(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             prepare_report = json.loads(proc.stdout)
             self.assertEqual(prepare_report["status"], "ready_for_codex_formatting")
+            self.assertEqual(prepare_report["image_sizing"]["schema"], "image-size-policy/1")
+            self.assertEqual(prepare_report["image_sizing"]["resized_count"], 0)
             question_plan = json.loads((workspace / "question_layout_plan.json").read_text(encoding="utf-8"))
             self.assertEqual(question_plan["preflight_status"], "ready_for_codex_formatting")
             self.assertEqual(question_plan["word_pagination"]["status"], "accepted")

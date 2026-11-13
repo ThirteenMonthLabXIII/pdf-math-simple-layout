@@ -18,6 +18,16 @@
   "heading_after_pt": 4,
   "title_after_pt": 10.0,
   "image_max_width_cm": 14.7,
+  "image_size_policy": {
+    "enabled": true,
+    "reference_min_width_cm": 0.0,
+    "reference_max_width_cm": 6.0,
+    "resize_threshold_cm": 6.0,
+    "fallback_width_cm": 4.05,
+    "group_by_lecture": true,
+    "preserve_aspect_ratio": true,
+    "only_shrink": true
+  },
   "paragraph_policy": {
     "body": {
       "left_indent_twips": 0,

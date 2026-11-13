@@ -6,6 +6,7 @@ import pymupdf
 from docx import Document
 from docx_layout_check import evaluate_layout_review, inspect_docx
 from docx_styling import apply_docx_styles
+from image_sizing import apply_docx_image_size_policy
 from question_layout import apply_question_layout, check_question_layout, check_word_pagination
 from review_coverage import complete_page_review
 
@@ -44,8 +45,12 @@ def prepare(args):
     default_profile = Path(__file__).resolve().parents[1] / "references" / "style_profile.json"
     profile_path = args.profile.resolve(strict=True) if args.profile else default_profile
     profile = json.loads(profile_path.read_text(encoding="utf-8")) if profile_path.is_file() else {}
+    image_size_report = apply_docx_image_size_policy(
+        ws/"working.docx", profile.get("image_size_policy")
+    )
     style_report = apply_docx_styles(ws/"working.docx", profile)
     question_layout_report = apply_question_layout(ws/"working.docx", profile)
+    question_layout_report["image_sizing"] = image_size_report
     question_structure_check = check_question_layout(ws/"working.docx", profile)
     word_pagination_report = None
     word_pagination_error = None
@@ -80,6 +85,8 @@ def prepare(args):
         "working_docx_sha256":sha(ws/"working.docx"),
         "style_policy_schema":style_report["schema"],
         "question_layout_schema":question_layout_report["schema"],
+        "image_sizing_schema":image_size_report["schema"],
+        "image_sizing_resized_count":image_size_report["resized_count"],
         "question_layout_preflight_status":preflight_status,
         "raw_stats":s})
     save(ws/"mineru_review.json",{"candidate_sha256":"","word_preview_checked":False,
@@ -90,6 +97,7 @@ def prepare(args):
     print(json.dumps({"status":preflight_status,"workspace":str(ws),
         "working_docx":str(ws/"working.docx"),"source_pages":total,"mineru_stats":s,
         "preformatted":True,"style_policy":style_report["paragraphs_by_style"],
+        "image_sizing":image_size_report,
         "question_layout_groups":question_layout_report["question_group_count"],
         "inserted_answer_paragraphs":question_layout_report["inserted_empty_paragraphs"],
         "word_page_count":word_pagination_report["word_page_count"] if word_pagination_report else None,

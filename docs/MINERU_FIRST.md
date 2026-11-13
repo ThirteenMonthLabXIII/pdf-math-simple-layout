@@ -20,7 +20,7 @@ if (Test-Path "teacher-sample.docx") {
 
 The extractor learns margins, fonts, line spacing, question hierarchy, and paragraph alignment. Sample indents above 1000 twips are rejected instead of copied into the new document. The teacher sample cannot override the flush-left question-start style or the Enter-only answer-space rule. If no sample is provided, use references/style_profile.json.
 
-3. Prepare the MinerU output. This automatically preserves a raw copy, applies the SIJI styles, and plans answer space and question pagination BEFORE Codex edits the document.
+3. Prepare the MinerU output. This automatically preserves a raw copy, applies the image-size policy to the working copy, applies the SIJI styles, and plans answer space and question pagination BEFORE Codex edits the document. Image sizing runs before the question planner and Word pagination preflight; its result is included in question_layout_plan.json and the prepare output.
 
 With a teacher sample:
 
@@ -35,6 +35,7 @@ Without a teacher sample:
 ~~~
 
 The untouched export remains mineru_original.docx. Codex edits working.docx. The prepare step:
+- applies the shared image-size policy: per-lecture median of existing images up to 6.0 cm; images wider than 6.0 cm shrink to that median; document-wide median fallback; 4.05 cm final fallback; aspect ratio and image bytes preserved;
 - detects each full question group, including its heading, number, stem, subquestions, formulas, options, figures, tables and captions;
 - adds answer space using genuinely empty Word paragraphs (one Enter paragraph per writing line);
 - gives each independent subquestion its own answer budget; big-question space grows with the number and complexity of its subquestions;
@@ -44,7 +45,7 @@ The untouched export remains mineru_original.docx. Codex edits working.docx. The
 - runs a structural check and real Microsoft Word pagination preflight before it allows content editing;
 - writes question_layout_plan.json, including the preflight result, and the applied rules/hashes to style_policy.json.
 
-Only continue when prepare reports ready_for_codex_formatting. If it reports needs_question_mapping, needs_question_layout, needs_question_page_fit or needs_word_pagination_check, stop before content editing. Manually classify missed question stems/subquestions, compact an oversized question within its own block, or restore Word COM, then rerun prepare and require a clean preflight.
+Only continue when prepare reports ready_for_codex_formatting. If it reports needs_question_mapping, needs_question_layout, needs_question_page_fit or needs_word_pagination_check, stop before content editing. Manually classify missed question stems/subquestions, tighten only redundant text spacing inside an oversized question, or restore Word COM, then rerun prepare and require a clean preflight. Its image dimensions have already been decided by the first-build policy; do not start a post-pagination image-resize pass.
 
 4. Only after preformatting and question planning, edit content in working.docx. Reuse the prepared styles:
    - SIJI Body
@@ -60,7 +61,7 @@ Only continue when prepare reports ready_for_codex_formatting. If it reports nee
 
 Do not manually assign paragraph indents or spacing. Do not copy paragraph formatting from the raw MinerU DOCX. Do not globally trim, collapse, or replace spaces. Preserve answer parentheses and their exact source spacing; correct text only against the PDF. Inline formulas stay in their question/body paragraph; standalone OfficeMath paragraphs use SIJI Formula.
 
-When content editing adds, removes or restructures questions/subquestions, rerun the planner before rendering. This is a normal layout-generation step for the changed content, not a repair-after-failure step:
+When content editing adds, removes or restructures questions/subquestions, rerun the question planner before rendering. This is a normal layout-generation step for the changed content, not a repair-after-failure step. Text-only edits do not rerun image sizing; if a figure is added or replaced, apply scripts/image_sizing.py once to the updated working DOCX before rerunning the question planner:
 
 ~~~powershell
 & $py scripts\question_layout.py apply --docx "job1\working.docx" --profile $profile

@@ -2,6 +2,9 @@
 
 A Codex-friendly skill to turn scanned mathematics handouts into editable Microsoft Word documents.
 
+> **New conversation? Start with [START_HERE.md](START_HERE.md).**
+> Read the route-specific instructions there before touching a file. Do not hunt through old work folders or recreate the workflow.
+
 **Preferred:** MinerU export → preventive Word styles + question/answer-space plan → content correction → real Word pagination check → per-page review.
 **Fallback:** local RapidOCR → editable DOCX → the same question/answer-space planner and style contract.
 
@@ -17,6 +20,7 @@ Features:
 - Apply the same style contract and real Word pagination preflight automatically to RapidOCR-built DOCX candidates.
 - Use scripts/question_layout.py to allocate per-subquestion writing space, enforce one-page question groups, and reject non-Enter blank-line tricks.
 - Keep mathematical text editable; preserve geometry diagrams as high-resolution crops.
+- Set figure display sizes automatically during the first MinerU prepare / RapidOCR build, before question layout and pagination. The shared rule uses per-lecture small-image medians, a document-wide fallback and a 4.05 cm final fallback while preserving aspect ratios.
 - Preserve every source question and figure, and plan writing space from the start; follow [the exercise workflow](docs/EXERCISE_WORKFLOW.md).
 - Refuse to mark a document accepted until source pages, rendered Word pages and final hashes are checked.
 - Retain a final DOCX layout scanner as a last-resort regression gate, not as the primary correction method.
@@ -67,6 +71,6 @@ Microsoft Word and Windows are required for real Word preview rendering. MinerU 
 
 ## 中文
 
-适用于**数学扫描 PDF 转可编辑 Word 简排**。默认使用 MinerU 导出 DOCX，prepare 阶段先给工作副本套用受控段落样式，并在 Codex 编辑前识别完整题组、按小题数量和复杂度插入 Enter 空段落、建立整题同页分页链。每页题号顶格开始；页尾空间不足时整题移到下一页。RapidOCR build 使用同一规划器。最终检查只负责确认规则被保持，不承担事后补救。
+适用于**数学扫描 PDF 转可编辑 Word 简排**。新对话统一从根目录 START_HERE.md 进入，再按任务路线读取对应工作流。默认使用 MinerU 导出 DOCX，prepare 阶段先自动确定图片显示尺寸，再套用受控段落样式、识别完整题组、按小题数量和复杂度插入 Enter 空段落、建立整题同页分页链。每页题号顶格开始；页尾空间不足时整题移到下一页。RapidOCR build 使用同一套图片尺寸和题目规划规则。图片尺寸不留到终稿阶段返工。
 
 MIT License.

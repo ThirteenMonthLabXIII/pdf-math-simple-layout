@@ -37,6 +37,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 from docx_layout_check import evaluate_layout_review, inspect_docx
 from docx_styling import apply_docx_styles, default_paragraph_policy, extract_paragraph_policy
+from image_sizing import apply_docx_image_size_policy, default_image_size_policy
 from question_layout import apply_question_layout, check_question_layout, check_word_pagination
 from review_coverage import complete_page_review
 
@@ -62,6 +63,7 @@ DEFAULT_PROFILE = {
     "heading_after_pt": 4,
     "title_after_pt": 10,
     "image_max_width_cm": 14.7,
+    "image_size_policy": default_image_size_policy(),
     "paragraph_policy": default_paragraph_policy(),
 }
 
@@ -405,8 +407,13 @@ def make_document(data, profile: dict, result: Path, workdir: Path):
     pdf.close()
     result.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(result))
+    # Fix final figure dimensions once, before question grouping and Word pagination.
+    image_size_report = apply_docx_image_size_policy(
+        result, profile.get("image_size_policy")
+    )
     style_report = apply_docx_styles(result, profile)
     question_layout_report = apply_question_layout(result, profile)
+    question_layout_report["image_sizing"] = image_size_report
     structural_check = check_question_layout(result, profile)
     word_pagination_report = None
     word_pagination_error = None
@@ -429,7 +436,11 @@ def make_document(data, profile: dict, result: Path, workdir: Path):
     question_layout_report["word_pagination"] = word_pagination_report
     question_layout_report["word_pagination_error"] = word_pagination_error
     question_layout_report["preflight_status"] = preflight_status
-    return {"style_policy": style_report, "question_layout": question_layout_report}
+    return {
+        "style_policy": style_report,
+        "question_layout": question_layout_report,
+        "image_sizing": image_size_report,
+    }
 
 
 def cmd_build(args):
@@ -446,6 +457,7 @@ def cmd_build(args):
     ignored_source_page_breaks=sum(1 for page in data["pages"] for block in page["blocks"] if block.get("type")=="page_break")
     report={"schema":SCHEMA,"source_sha256":data["source_sha256"],"candidate":str(output),"candidate_sha256":sha256(output),
             "style_policy":style_report,"question_layout":question_layout_report,
+            "image_sizing":build_styles["image_sizing"],
             "question_layout_preflight_status":question_layout_report["preflight_status"],
             "answer_space_policy":profile.get("answer_space_policy", {}),
             "ignored_source_page_breaks":ignored_source_page_breaks,
@@ -455,6 +467,7 @@ def cmd_build(args):
     print(json.dumps({"output":str(output),"status":report["status"],
         "question_layout_preflight_status":question_layout_report["preflight_status"],
         "question_groups":question_layout_report["question_group_count"],
+        "image_sizing":build_styles["image_sizing"],
         "word_page_count":question_layout_report["word_pagination"]["word_page_count"] if question_layout_report["word_pagination"] else None,
         "split_question_groups":question_layout_report["word_pagination"]["split_question_groups"] if question_layout_report["word_pagination"] else None,
         "unverified_pages":report["unverified_pages"],"layout_errors":invalid},ensure_ascii=False))
