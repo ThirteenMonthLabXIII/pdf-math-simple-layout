@@ -30,7 +30,7 @@ Both production routes apply the image-size rule automatically before question l
 - **GPT default:** local MinerU Precision API; the logged-in web route is also allowed.
 - **Codex default:** MinerU in the already-logged-in browser in the current Codex conversation's own sidebar, without an API Token.
 - **Switch immediately** when the web UI estimates more than 120 seconds of queueing, has no progress for 60 seconds, hangs, lacks login, or the sidebar is unavailable. Codex may also call the local API directly at the outset when the task or available environment makes it preferable. These thresholds guide efficiency; they are not permission gates.
-- **Single existing API implementation:** D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py. Its local Token is available to either actor on the authorized machine; never print or duplicate the secret.
+- **Single stable API entry:** scripts/mineru_entry.py delegates to the existing shared MinerU API implementation. Both GPT and Codex can use it directly; MINERU_API_SCRIPT may override the implementation path without changing the workflow. It never prints or duplicates the local Token.
 - **One downstream pipeline:** complete MinerU DOCX → scripts/mineru_handoff.py prepare → image sizing → styles → answer space → question pagination. Neither actor gets a separate formatting pipeline.
 
 When uncertain, follow the decision table at the **top of README.md**, then START_HERE.md. Read docs/CODEX_DIRECT.md for sidebar steps and docs/MINERU_API.md for API commands. Do not invent new routes or permission restrictions.
@@ -241,7 +241,7 @@ Only deliver when audit status is accepted and the actual page/figure/math revie
 ## Software
 
 - scripts/mineru_handoff.py: preserve the raw MinerU DOCX and preformat the working copy before editing.
-- D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py: single existing MinerU API implementation equally available to GPT and Codex; Token stays in that Skill's ignored secrets file.
+- scripts/mineru_entry.py: common GPT/Codex API CLI entry, delegating to the existing MinerU implementation. The Token remains in the ignored local secrets file.
 - scripts/docx_styling.py: create/apply the preventive SIJI paragraph-style contract and extract safe styles from a teacher sample.
 - scripts/question_layout.py: allocate Enter-created answer space, keep every complete question on one page, and verify real Word pagination.
 - scripts/layout_cli.py: profile extraction, RapidOCR fallback, build, Word render and audit.

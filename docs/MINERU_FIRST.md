@@ -10,7 +10,7 @@ $py = 'D:\我的python\python3.12\python.exe'
    - GPT normally uses the local MinerU API; it may also use a logged-in web session.
    - Codex normally opens the already-logged-in MinerU page in the browser attached to the **current Codex conversation's own sidebar**. This web route needs no Token.
    - If the web queue is estimated above 120 seconds, has no progress for 60 seconds, hangs, is not logged in or is unavailable, use the local API immediately. Codex may also choose the local API from the start; there is **no special permission gate**.
-   - For API usage read [MINERU_API.md](MINERU_API.md), which invokes the single existing script under word-axmath-gpt-skill. Both routes produce the same complete editable MinerU DOCX; continue to the exact same prepare step below.
+   - For API usage read [MINERU_API.md](MINERU_API.md), which uses scripts/mineru_entry.py to delegate to the existing MinerU API implementation. Both routes produce the same complete editable MinerU DOCX; continue to the exact same prepare step below.
 
 2. Select the paragraph-style profile BEFORE preparing the handout. Keep the bundled defaults unless a teacher sample is provided:
 

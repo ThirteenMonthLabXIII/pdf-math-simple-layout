@@ -45,6 +45,9 @@ class MinerURoutingContractTest(unittest.TestCase):
         self.assertIn("No additional Codex authorization is required", skill)
         self.assertIn("mineru_handoff.py prepare", readme)
         self.assertIn("docs/MINERU_API.md", skill)
+        self.assertIn("scripts\\mineru_entry.py", readme)
+        self.assertTrue((ROOT / "scripts" / "mineru_entry.py").is_file())
+        self.assertFalse((ROOT / "scripts" / "mineru_api.py").exists())
 
 
 if __name__ == "__main__":

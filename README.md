@@ -11,7 +11,7 @@
 
 **切换参考：** 网页预计排队超过 **120 秒**、连续 **60 秒无进展** 或界面卡住，**不要继续等网页**，调用本机 API。这些数值是效率参考，不是允许使用 API 的前置许可。即使未达到阈值，也可按实际任务选择更快的通道。
 
-**唯一现有 API 实现：** `D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py`。两个 Skill 共用它，当前不复制第二份 API 脚本。凭据由脚本在本机读取，不在文档、命令行或 Git 中写 Token 内容。
+**统一 API 入口：** `scripts\mineru_entry.py`。它转发到原有 MinerU API 实现，不复制第二套代码；默认后端在 AxMath Skill，也可用 `MINERU_API_SCRIPT` 指定新位置。Token 由原 API 从本机读取，不放入文档、命令行或 Git。
 
 **共同出口：** 无论谁使用网页还是 API，取得完整的 MinerU DOCX 后都进入 `scripts\mineru_handoff.py prepare`，首次制作即设置图片尺寸、题目布局、答题空间、Word 分页。
 

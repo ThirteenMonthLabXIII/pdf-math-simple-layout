@@ -17,7 +17,7 @@
 $py = 'D:\我的python\python3.12\python.exe'
 $apiWorkspace = 'job1_mineru_api'
 $profile = 'references\style_profile.json'
-$apiScript = 'D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py'
+$apiScript = 'scripts\mineru_entry.py'
 & $py $apiScript parse --input "input.pdf" --outdir $apiWorkspace --poll-interval 5 --max-wait-seconds 3600
 & $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "$apiWorkspace\mineru_original.docx" --workspace "job1" --profile $profile
 ~~~
@@ -30,8 +30,8 @@ API 路线直接通过本机 Python 调用 MinerU Precision API，不需要浏�
 
 - 默认先打开当前 Codex 对话自己侧边栏的已登录 MinerU 页面；不用 Token。
 - 遇到排队预计超过120秒、60秒无进展、前端卡住、登录态不可用或侧边栏打不开，立即使用本机 API。任务需要时也可以直接 API 开始。
-- API 已由 D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py 实现，本机 Token 文件由脚本自动读取。
+- 运行本仓库 `scripts\mineru_entry.py` 即调用现有 MinerU API 实现；本机 Token 由原 API 自动读取，不在此仓库复制。
 - 不在提示词、日志、命令行、JSON、Git 或共享目录中泄露 Token。对于其他 Word/AxMath 步骤，执行对应的 Skill 工作流；身份本身不构成能力限制。
 - 本机文件只有在本机环境可访问时才能读取；缺少本机环境就使用实际可用的方法，不宣称已在本机执行。
 
-遇到 API 任务状态问题，先运行 D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py status --workspace "job1_mineru_api"，不要新建重复 batch。API 入口、恢复规则和错误定位见 docs\MINERU_API.md。
+遇到 API 任务状态问题，先运行 `scripts\mineru_entry.py status --workspace "job1_mineru_api"`，不要新建重复 batch。API 入口、恢复规则和错误定位见 docs\MINERU_API.md。

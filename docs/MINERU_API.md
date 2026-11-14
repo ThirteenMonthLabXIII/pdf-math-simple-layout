@@ -4,7 +4,7 @@
 
 网页转换和本机 API 是两种获取同一份 MinerU DOCX 的方式。**GPT 默认本机 API；Codex 默认当前对话的已登录侧栏网页，但双方都可随时调用 API。网页慢或卡住就直接 API，不要继续排队。两者权限相同。** 两种方式的 DOCX 最后都进入同一个 mineru_handoff.py prepare 流程。
 
-API 脚本和 Token 不在本仓库复制两份：统一复用 D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py 与其本机 secrets 文件。这样 GPT 与 Codex 使用同一个提交、轮询、断点恢复和下载实现。
+本仓库的 `scripts\mineru_entry.py` 是 GPT 与 Codex 共用的 CLI 入口，默认转发给 `D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py`。如实际安装路径改变，只需设置 `MINERU_API_SCRIPT` 指向现有 API 脚本；无需复制 API 代码或 Token。
 
 API 使用 MinerU Precision API，直接从本机提交 PDF、上传文件、查询任务并下载 DOCX，不需要浏览器前端。
 
@@ -29,7 +29,7 @@ API 使用 MinerU Precision API，直接从本机提交 PDF、上传文件、查
 $py = 'D:\我的python\python3.12\python.exe'
 $apiWorkspace = 'job1_mineru_api'
 $profile = 'references\style_profile.json'
-$apiScript = 'D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py'
+$apiScript = 'scripts\mineru_entry.py'
 & $py $apiScript parse --input "input.pdf" --outdir $apiWorkspace --poll-interval 5 --max-wait-seconds 3600
 & $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "$apiWorkspace\mineru_original.docx" --workspace "job1" --profile $profile
 ~~~
@@ -55,7 +55,7 @@ mineru_api.py 会产生：
 ## 断点恢复
 
 ~~~powershell
-$apiScript = 'D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py'
+$apiScript = 'scripts\mineru_entry.py'
 & $py $apiScript status --workspace "job1_mineru_api"
 ~~~
 

@@ -36,7 +36,7 @@
 
 ## MinerU 转换入口：看 README 顶部权限与优先级表
 
-GPT 默认本机 API，Codex 默认本对话已登录侧边栏网页；**双方都能随时使用任一路线**。网页慢就切 API，不要无意义等待。唯一 API 位于 D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py，Token 由现有脚本读取，绝不输出其内容。
+GPT 默认本机 API，Codex 默认本对话已登录侧边栏网页；**双方都能随时使用任一路线**。网页慢就切 API，不要无意义等待。API 统一入口为 scripts\mineru_entry.py，自动调用现有公共实现；Token 由原脚本读取，绝不输出其内容。
 
 从网页或 API 获取 DOCX 后，统一调用 scripts\mineru_handoff.py prepare。操作文件：docs\MINERU_FIRST.md、docs\CODEX_DIRECT.md、docs\MINERU_API.md。
 
