@@ -6,7 +6,11 @@ Set the Python executable once:
 $py = 'D:\我的python\python3.12\python.exe'
 ~~~
 
-1. Read [EXERCISE_WORKFLOW.md](EXERCISE_WORKFLOW.md). Before drafting, map every source page, example, full question, subquestion and its figures. Export the entire source PDF using MinerU; use the conversation's in-app browser when available, unless the user specifies another browser. Treat the export as an input to be checked, not as proof that the questions or figures are complete.
+1. Read [EXERCISE_WORKFLOW.md](EXERCISE_WORKFLOW.md). Before drafting, map each source page, full question, subquestion and its figures. **GPT and Codex have equal permission to use MinerU web and local API/Token; only their default priority differs**:
+   - GPT normally uses the local MinerU API; it may also use a logged-in web session.
+   - Codex normally opens the already-logged-in MinerU page in the browser attached to the **current Codex conversation's own sidebar**. This web route needs no Token.
+   - If the web queue is estimated above 120 seconds, has no progress for 60 seconds, hangs, is not logged in or is unavailable, use the local API immediately. Codex may also choose the local API from the start; there is **no special permission gate**.
+   - For API usage read [MINERU_API.md](MINERU_API.md), which invokes the single existing script under word-axmath-gpt-skill. Both routes produce the same complete editable MinerU DOCX; continue to the exact same prepare step below.
 
 2. Select the paragraph-style profile BEFORE preparing the handout. Keep the bundled defaults unless a teacher sample is provided:
 

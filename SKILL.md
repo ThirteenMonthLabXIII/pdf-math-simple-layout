@@ -12,7 +12,9 @@ For every new PDF-to-Word task, use this repository as the single source of trut
 1. Read this complete SKILL.md.
 2. Read the complete docs/EXERCISE_WORKFLOW.md. It contains the mandatory question, answer-space, image-size and pagination rules.
 3. Choose only the matching route:
-   - MinerU DOCX: read docs/MINERU_FIRST.md.
+   - MinerU conversion: read docs/MINERU_FIRST.md.
+   - When Codex is doing the conversion: also read docs/CODEX_DIRECT.md.
+   - Read docs/MINERU_API.md whenever using the API (GPT and Codex both permitted).
    - RapidOCR fallback / layout.json: read docs/WORKFLOW.md.
 4. If a teacher formatting sample is supplied, also read docs/REFERENCE.md. Read docs/INSTALL.md only for installation work.
 5. Follow the existing scripts. Do not search unrelated work folders, revive old workflow copies, or create a second processing pipeline.
@@ -20,6 +22,18 @@ For every new PDF-to-Word task, use this repository as the single source of trut
 **Fixed production order:** preserve source → convert once with MinerU → set image sizes automatically → apply paragraph styles and question/answer-space plan → run the real Word pagination preflight → edit content → rerun the question planner only if question structure changed → perform the required source-bound acceptance once.
 
 Both production routes apply the image-size rule automatically before question layout and pagination. Do not resize images later as a separate repair pass. See the image-size rule below and docs/EXERCISE_WORKFLOW.md.
+
+## MUST READ: GPT and Codex have equal MinerU permissions
+
+**Both GPT and Codex have full access to the local MinerU API and authenticated web route, including use of the existing local Token. The only distinction is the default order of use, not who is allowed to use the API. No additional Codex authorization is required.**
+
+- **GPT default:** local MinerU Precision API; the logged-in web route is also allowed.
+- **Codex default:** MinerU in the already-logged-in browser in the current Codex conversation's own sidebar, without an API Token.
+- **Switch immediately** when the web UI estimates more than 120 seconds of queueing, has no progress for 60 seconds, hangs, lacks login, or the sidebar is unavailable. Codex may also call the local API directly at the outset when the task or available environment makes it preferable. These thresholds guide efficiency; they are not permission gates.
+- **Single existing API implementation:** D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py. Its local Token is available to either actor on the authorized machine; never print or duplicate the secret.
+- **One downstream pipeline:** complete MinerU DOCX → scripts/mineru_handoff.py prepare → image sizing → styles → answer space → question pagination. Neither actor gets a separate formatting pipeline.
+
+When uncertain, follow the decision table at the **top of README.md**, then START_HERE.md. Read docs/CODEX_DIRECT.md for sidebar steps and docs/MINERU_API.md for API commands. Do not invent new routes or permission restrictions.
 
 ## First: preserve the source and account for every question
 
@@ -227,6 +241,7 @@ Only deliver when audit status is accepted and the actual page/figure/math revie
 ## Software
 
 - scripts/mineru_handoff.py: preserve the raw MinerU DOCX and preformat the working copy before editing.
+- D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py: single existing MinerU API implementation equally available to GPT and Codex; Token stays in that Skill's ignored secrets file.
 - scripts/docx_styling.py: create/apply the preventive SIJI paragraph-style contract and extract safe styles from a teacher sample.
 - scripts/question_layout.py: allocate Enter-created answer space, keep every complete question on one page, and verify real Word pagination.
 - scripts/layout_cli.py: profile extraction, RapidOCR fallback, build, Word render and audit.

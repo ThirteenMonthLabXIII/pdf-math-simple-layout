@@ -2,12 +2,22 @@
 
 适用仓库：D:\work\pdf-math-simple-layout
 
+## 最高优先级：不要把默认路线误判为权限限制
+
+**GPT 与 Codex 都有完整 MinerU 网页/API/本机 Token 使用权限，无需为 Codex 另行申请授权。**
+
+- GPT **默认本机 API**，也可使用网页登录路线。
+- Codex **默认当前对话侧边栏已登录网页**；网页排队预计超过 120 秒、60 秒无进展、前端卡住或网页登录态不可用时，马上改用本机 API。实际需要时也可以一开始就使用 API。
+- **这是优先级，不是必须先失败才准切换。** 统一 API 实现位置与操作命令见 README.md 顶部和 docs\MINERU_API.md。
+
 ## 新任务固定读取顺序
 
 1. 完整阅读根目录 SKILL.md。
 2. 完整阅读 docs\EXERCISE_WORKFLOW.md。题目完整性、答题空段落、图片尺寸、分页的统一硬规则都在这里。
-3. 根据实际转换路线，只读对应工作流：
-   - MinerU 已导出 DOCX：docs\MINERU_FIRST.md
+3. 根据实际转换路线读取对应文件：
+   - MinerU 转换：docs\MINERU_FIRST.md
+   - Codex 执行 MinerU：再读 docs\CODEX_DIRECT.md
+   - 准备使用本机 API 时读 docs\MINERU_API.md（GPT/Codex 均可）
    - RapidOCR / layout.json：docs\WORKFLOW.md
 4. 有老师样例时再读 docs\REFERENCE.md；只有安装或环境故障时才读 docs\INSTALL.md。
 5. 按现有脚本执行。不要从旧任务目录抄旧流程，不要搜索无关文件夹，不要自行新建第二套处理链。
@@ -23,6 +33,12 @@
 → 内容编辑
 → 只有题目/小题结构发生变化时才重跑题目规划
 → 最终按源稿进行一次必要验收。
+
+## MinerU 转换入口：看 README 顶部权限与优先级表
+
+GPT 默认本机 API，Codex 默认本对话已登录侧边栏网页；**双方都能随时使用任一路线**。网页慢就切 API，不要无意义等待。唯一 API 位于 D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py，Token 由现有脚本读取，绝不输出其内容。
+
+从网页或 API 获取 DOCX 后，统一调用 scripts\mineru_handoff.py prepare。操作文件：docs\MINERU_FIRST.md、docs\CODEX_DIRECT.md、docs\MINERU_API.md。
 
 ## 图片尺寸规则（首次制作时执行）
 
@@ -41,6 +57,7 @@
 | 问题 | 先看 |
 |---|---|
 | 不知道完整生产流程 | SKILL.md → docs\EXERCISE_WORKFLOW.md |
+| MinerU 优先级、网页/API 选择 | README.md 顶部 → docs\MINERU_FIRST.md → docs\CODEX_DIRECT.md / docs\MINERU_API.md |
 | MinerU 导出后的 DOCX 如何准备 | docs\MINERU_FIRST.md → scripts\mineru_handoff.py |
 | RapidOCR 图片、题目块、DOCX 如何生成 | docs\WORKFLOW.md → scripts\layout_cli.py |
 | 图片尺寸如何计算/应用 | scripts\image_sizing.py → references\style_profile.json |

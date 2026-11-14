@@ -1,11 +1,29 @@
 # PDF Math Simple Layout
 
+## 必读：GPT 与 Codex 同权限，只有 MinerU 默认优先级不同
+
+**这是一条执行顺序规则，不是权限规则。GPT 和 Codex 都能完整使用已登录网页、本机 Token、MinerU API、转换脚本及后续排版工具；Codex 使用 API 不需要重新取得用户授权。** 以当前任务明确要求与实际效率为准。
+
+| 执行者 | 默认先用 | 切换与直接选择 |
+|---|---|---|
+| **GPT** | **本机 MinerU API（Token 自动从本机文件读取）** | 可以直接使用已登录的 MinerU 网页 |
+| **Codex** | **当前 Codex 对话侧边栏中已登录的 MinerU 网页（不需要 Token）** | 网页排队久、60 秒无进展、前端卡住、会话未登录或侧栏不可用时立即改用本机 API；需要时也可直接用 API |
+
+**切换参考：** 网页预计排队超过 **120 秒**、连续 **60 秒无进展** 或界面卡住，**不要继续等网页**，调用本机 API。这些数值是效率参考，不是允许使用 API 的前置许可。即使未达到阈值，也可按实际任务选择更快的通道。
+
+**唯一现有 API 实现：** `D:\CHATGPT\skills\word-axmath-gpt-skill\scripts\mineru_api.py`。两个 Skill 共用它，当前不复制第二份 API 脚本。凭据由脚本在本机读取，不在文档、命令行或 Git 中写 Token 内容。
+
+**共同出口：** 无论谁使用网页还是 API，取得完整的 MinerU DOCX 后都进入 `scripts\mineru_handoff.py prepare`，首次制作即设置图片尺寸、题目布局、答题空间、Word 分页。
+
+**新对话阅读顺序：** [START_HERE.md](START_HERE.md) → [SKILL.md](SKILL.md) → [练习工作流](docs/EXERCISE_WORKFLOW.md) → 按需读取 [Codex 网页入口](docs/CODEX_DIRECT.md) 或 [本机 API 命令](docs/MINERU_API.md)。不要跳过入口自行猜路由。
+
 A Codex-friendly skill to turn scanned mathematics handouts into editable Microsoft Word documents.
 
 > **New conversation? Start with [START_HERE.md](START_HERE.md).**
 > Read the route-specific instructions there before touching a file. Do not hunt through old work folders or recreate the workflow.
 
 **Preferred:** MinerU export → preventive Word styles + question/answer-space plan → content correction → real Word pagination check → per-page review.
+**MinerU access:** GPT and Codex have equal permission; choose the default order shown above, and switch freely as required by the task.
 **Fallback:** local RapidOCR → editable DOCX → the same question/answer-space planner and style contract.
 
 Features:
@@ -37,7 +55,7 @@ py -3 -m venv .venv
 
 ## MinerU-first example
 
-First export the **entire** source PDF from MinerU as an editable DOCX.
+First export the **entire** source PDF from MinerU as an editable DOCX. Both actors may choose web or API; the default order and fast switching rules are at the top of this README. Both routes feed the same prepare command below.
 
 ~~~powershell
 $py = ".\.venv\Scripts\python.exe"
@@ -63,7 +81,7 @@ if (Test-Path "teacher-sample.docx") {
 & $py scripts\mineru_handoff.py audit --workspace "job1" --require-accepted --word-pages
 ~~~
 
-See [SKILL.md](SKILL.md), [MinerU-first instructions](docs/MINERU_FIRST.md), [installation](docs/INSTALL.md), [layout JSON fallback](docs/WORKFLOW.md), and [style sample use](docs/REFERENCE.md).
+See [SKILL.md](SKILL.md), [MinerU-first instructions](docs/MINERU_FIRST.md), [Codex browser/API routing](docs/CODEX_DIRECT.md), [local MinerU API fallback](docs/MINERU_API.md), [installation](docs/INSTALL.md), [layout JSON fallback](docs/WORKFLOW.md), and [style sample use](docs/REFERENCE.md).
 
 Microsoft Word and Windows are required for real Word preview rendering. MinerU is a separate project, not bundled here. No scanned documents, customer files, model weights, or licensed samples are included.
 

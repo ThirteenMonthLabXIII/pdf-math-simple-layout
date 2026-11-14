@@ -13,6 +13,11 @@ workspaces/
 *.log
 .env
 .env.*
+secrets/
+**/mineru_job.json
+**/mineru_ready.json
+**/mineru_result.zip
+**/mineru_output/
 *.bak
 *.tmp
 *.jsonl
