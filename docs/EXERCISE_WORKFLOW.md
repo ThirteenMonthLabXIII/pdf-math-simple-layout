@@ -30,23 +30,18 @@
 
 ### 用户禁止段落分页或换行设置时
 
-当前 `mineru_handoff.py prepare`、`layout_cli.py build` 和 `question_layout.py apply` 会写入 `keepNext`、`keepLines` 等分页属性，表格还会写入 `cantSplit`；它们**没有**仅用 Enter 的开关，不要在该任务的工作稿上运行。普通 `question_layout.py check` 还要求上述分页链，它的结构结果不能被当成此分支通过的证据。
-
-在内容编辑前执行以下替代预检：
-
-1. 保存原始 MinerU 输出，在工作副本上按源页建立题组清单、题号和每小问的空段预算，赋予题目首段 `SIJI Question Start` 等必要样式；不设置段落换行或分页属性。准备真实 Enter 空段，检查正文、表格及实际生效的继承样式：包括 `keepNext`、`keepLines`、`pageBreakBefore`、`widowControl`、`cantSplit` 和手动换行/分页符。按用户要求区分并处理缓存页标记，不能为了清理标记删掉源内容。
-2. 使用 Word 真实页码检查题组、答题空段和页首；若整题放不下，用 Enter 空段把题组和所属标题一起推到下一页。依据 Word 页码、页内位置、可用高度与正常空段行高一次计算需要增加的段数；页首不得出现多余空段。插入与误差处理见 [实际分页](TROUBLESHOOTING.md#pagination)。
-3. 记录当前工作稿哈希、源题与 Word 题组映射、各小问空段数、真实 Word 分页结果及例外处理。确认题组数量与源稿一致、零跨页、页首无空段，才开始内容编辑；不得伪造 `ready_for_codex_formatting` 或修改审核结果掩盖工具限制。以下只调用分页读取函数，不运行写入分页属性的 `apply`：
+准备工作稿时在 prepare 或 build 加 `--pagination-mode enter`；已有工作稿需要重新规划时运行：
 
 ~~~powershell
 $py = 'D:\我的python\python3.12\python.exe'
-& $py -X utf8 -c 'import json,sys;from pathlib import Path;sys.path.insert(0,"scripts");from question_layout import check_word_pagination;print(json.dumps(check_word_pagination(Path(sys.argv[1])),ensure_ascii=False,indent=2))' 'job1\working.docx'
+& $py scripts\question_layout.py apply --docx 'job1\working.docx' --profile $profile --pagination-mode enter
+& $py scripts\question_layout.py check --docx 'job1\working.docx' --profile $profile --pagination-mode enter
 ~~~
 
-该函数依赖题目首段样式识别题组；核对题组数、表格和图的归属及相邻标题，不能只看 `accepted`。内容或题组改变后，对受影响部分重新核对空段、禁用属性和真实分页。
+该模式在副本中清除段落及继承样式的换行/分页属性，保留既有答题空段，按小问补充真实 Enter 空段；通过 Word 实际分页，只用新空段把整题及所属标题移页，再检查禁用属性、页首与题组起止页。重跑只重建程序插入的分页空段。原稿中的手动换行、浮动图或多分节等不支持的结构需先人工整理；题目超过一页或无法确保页首无空段时停止并保留原稿。核对自动识别的题组数量、图表归属与源稿一致，内容或题组改变后重新规划并检查。
 
 ## 4. 最终核对与交付
 
 用 Microsoft Word 实际渲染，按源页清单逐页对照完整内容、数字、公式、选项、图表及图注，并检查每题与答题空间同页、页首顶格。只复看改动页；可对哈希完全相同的已检查页面沿用实际查看过的记录。自动计数和 OCR 置信度只用于定位疑点。
 
-手动填写真实核对结果与最终 DOCX 哈希；修改使相关旧审核记录失效。标准路线的自动审计检查实际交付稿并要求 accepted；Enter 分支保留默认审计的不通过结果，另记录真实分页、属性和逐页核验，不伪造自动通过。源页记录恰好覆盖每页一次且不得虚填。若用户有明确交付范围、文件名和位置，以其要求为准；否则保留原 PDF、同原名 DOCX、Word 预览 PDF（`_Word版` 后缀）及验收报告。交付前保护已有文件，复制后核对候选稿、交付稿和原 PDF 哈希。
+手动填写真实核对结果与最终 DOCX 哈希；修改使相关旧审核记录失效。自动审计按工作区记录的分页模式检查实际交付稿并要求 accepted；源页记录恰好覆盖每页一次且不得虚填。若用户有明确交付范围、文件名和位置，以其要求为准；否则保留原 PDF、同原名 DOCX、Word 预览 PDF（`_Word版` 后缀）及验收报告。交付前保护已有文件，复制后核对候选稿、交付稿和原 PDF 哈希。

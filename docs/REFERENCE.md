@@ -8,4 +8,4 @@ $profile = Join-Path $env:TEMP 'pdf-math-style-profile.json'
 & $py scripts\layout_cli.py profile --sample 'reference.docx' --output $profile
 ~~~
 
-提取器排除异常缩进；题目首段顶格、真实 Enter 答题空段和当前用户要求优先。用户禁止段落分页属性时按练习工作流的 Enter 分支处理，不调用会写入分页链的 prepare/build。
+提取器排除异常缩进；题目首段顶格、真实 Enter 答题空段和当前用户要求优先。用户禁止段落分页或换行设置时，prepare/build 使用 `--pagination-mode enter`。

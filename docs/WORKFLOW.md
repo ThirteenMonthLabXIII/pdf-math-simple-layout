@@ -1,6 +1,6 @@
 # RapidOCR 与 layout.json
 
-仅在完整 MinerU DOCX 不可用时使用。先读 [练习工作流](EXERCISE_WORKFLOW.md)，并检查用户是否禁止段落分页属性；默认 `build` 会写分页链，此时不能直接运行，须按练习工作流的 Enter 分支规划和预检。
+仅在完整 MinerU DOCX 不可用时使用。先读 [练习工作流](EXERCISE_WORKFLOW.md)；用户禁止段落分页或换行设置时，在 `build` 命令末尾加 `--pagination-mode enter`。
 
 ~~~powershell
 $py = 'D:\我的python\python3.12\python.exe'

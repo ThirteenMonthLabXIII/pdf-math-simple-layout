@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 
 from docx import Document
@@ -85,6 +86,8 @@ def _numbering_format(paragraph):
 
 
 def _is_decimal_numbered(paragraph) -> bool:
+    if paragraph.style.name == "SIJI Enter Page Spacer":
+        return False
     return _numbering_format(paragraph) in {
         "decimal", "decimalZero", "upperRoman", "lowerRoman",
         "upperLetter", "lowerLetter",
@@ -102,7 +105,7 @@ def _is_empty_answer_paragraph(paragraph) -> bool:
     for node in paragraph._p.iter():
         if node.tag in DRAWING_TAGS or node.tag in MATH_TAGS:
             return False
-        if node.tag in {qn("w:tab"), qn("w:br")}:
+        if node.tag in {qn("w:tab"), qn("w:br"), qn("w:cr")}:
             return False
     return True
 
@@ -114,6 +117,8 @@ def _body_blocks(document):
         if element.tag == qn("w:p"):
             paragraph = Paragraph(element, document)
             kind = classify_paragraph(paragraph)
+            if paragraph.style.name == "SIJI Enter Page Spacer":
+                kind = "page_spacer"
             text = paragraph.text or ""
             if not text and _is_decimal_numbered(paragraph):
                 kind = "question_marker"
@@ -158,6 +163,11 @@ def build_question_groups(document) -> tuple[list[dict], list[dict]]:
         index = block["index"]
         kind = block["kind"]
         text = block["text"]
+
+        if kind == "page_spacer":
+            close(index - 1)
+            pending_question_heading = None
+            continue
 
         if kind in {"title", "heading"}:
             if current is not None:
@@ -238,7 +248,8 @@ def _trailing_empty_count(blocks, start, end):
     count = 0
     for block in reversed(blocks[start:end + 1]):
         paragraph = block["paragraph"]
-        if paragraph is not None and _is_empty_answer_paragraph(paragraph):
+        if (paragraph is not None and block["kind"] != "page_spacer"
+                and _is_empty_answer_paragraph(paragraph)):
             count += 1
         else:
             break
@@ -356,9 +367,8 @@ def _set_row_cannot_split(row):
         tr_pr.append(OxmlElement("w:cantSplit"))
 
 
-def _apply_group_pagination(document, blocks, groups):
+def _apply_group_styles(document, blocks, groups):
     for group in groups:
-        start, end = group["start"], group["end"]
         question_index = group["question_index"]
         question_paragraph = blocks[question_index]["paragraph"]
         if question_paragraph is not None:
@@ -371,6 +381,11 @@ def _apply_group_pagination(document, blocks, groups):
             if paragraph is not None:
                 paragraph.style = _style_for(document, "subquestion")
 
+
+def _apply_group_pagination(document, blocks, groups):
+    _apply_group_styles(document, blocks, groups)
+    for group in groups:
+        start, end = group["start"], group["end"]
         for index in range(start, end + 1):
             block = blocks[index]
             is_not_last = index < end
@@ -431,8 +446,14 @@ def _set_existing_answer_blanks(blocks, segments, document):
             index -= 1
 
 
-def apply_question_layout(docx_path: Path, profile: dict | None = None) -> dict:
+def apply_question_layout(docx_path: Path, profile: dict | None = None,
+                          pagination_mode: str = "keep") -> dict:
     """Insert Enter-created answer paragraphs and bind each question into one page block."""
+    if pagination_mode == "enter":
+        from enter_pagination import apply_enter_layout
+        return apply_enter_layout(docx_path, profile)
+    if pagination_mode not in {"keep", "_enter_prepare"}:
+        raise ValueError(f"Unknown pagination mode: {pagination_mode}")
     docx_path = Path(docx_path).resolve(strict=True)
     profile = profile or {}
     policy = {
@@ -440,7 +461,7 @@ def apply_question_layout(docx_path: Path, profile: dict | None = None) -> dict:
         **(profile.get("answer_space_policy") or {}),
     }
     document = Document(str(docx_path))
-    removed_breaks = _remove_manual_page_controls(document)
+    removed_breaks = _remove_manual_page_controls(document) if pagination_mode == "keep" else {}
     _style_for(document, "question_start")
     _style_for(document, "answer_blank")
 
@@ -471,7 +492,10 @@ def apply_question_layout(docx_path: Path, profile: dict | None = None) -> dict:
 
     # Rebuild after insertion and apply one keep-with-next chain to each full question.
     blocks, groups = build_question_groups(document)
-    _apply_group_pagination(document, blocks, groups)
+    if pagination_mode == "keep":
+        _apply_group_pagination(document, blocks, groups)
+    else:
+        _apply_group_styles(document, blocks, groups)
 
     temp = docx_path.with_name(docx_path.stem + ".question-layout-tmp.docx")
     document.save(str(temp))
@@ -504,7 +528,8 @@ def _effective_indent_twips(paragraph, name):
     return int(round(value.twips)) if value is not None else 0
 
 
-def check_question_layout(docx_path: Path, profile: dict | None = None) -> dict:
+def check_question_layout(docx_path: Path, profile: dict | None = None,
+                          pagination_mode: str = "keep") -> dict:
     """Check answer-space counts, real empty paragraphs, flush-left labels and page chains."""
     docx_path = Path(docx_path).resolve(strict=True)
     profile = profile or {}
@@ -515,6 +540,11 @@ def check_question_layout(docx_path: Path, profile: dict | None = None) -> dict:
     document = Document(str(docx_path))
     blocks, groups = build_question_groups(document)
     findings = []
+    if pagination_mode == "enter":
+        from enter_pagination import find_forbidden_controls
+        findings.extend(find_forbidden_controls(document))
+    elif pagination_mode != "keep":
+        raise ValueError(f"Unknown pagination mode: {pagination_mode}")
     total_required = 0
     total_existing = 0
 
@@ -584,7 +614,7 @@ def check_question_layout(docx_path: Path, profile: dict | None = None) -> dict:
                     })
                 trailing -= 1
 
-        for index in range(group["start"], group["end"] + 1):
+        for index in range(group["start"], group["end"] + 1) if pagination_mode == "keep" else ():
             paragraph = blocks[index]["paragraph"]
             if paragraph is None:
                 continue
@@ -617,13 +647,19 @@ def check_question_layout(docx_path: Path, profile: dict | None = None) -> dict:
         "required_empty_paragraphs": total_required,
         "existing_empty_paragraphs": total_existing,
         "manual_page_breaks": len(manual_breaks),
+        "pagination_mode": pagination_mode,
         "findings": findings,
         "status": "ready_for_word_pagination_check" if not findings else "needs_layout_work",
     }
 
 
-def check_word_pagination(docx_path: Path) -> dict:
+def check_word_pagination(docx_path: Path, pagination_mode: str = "keep") -> dict:
     """Use real Word pagination to detect any question block that spans pages."""
+    if pagination_mode == "enter":
+        from enter_pagination import check_enter_word_pagination
+        return check_enter_word_pagination(docx_path)
+    if pagination_mode != "keep":
+        raise ValueError(f"Unknown pagination mode: {pagination_mode}")
     try:
         import win32com.client
     except ImportError as exc:
@@ -733,23 +769,29 @@ def main(argv=None):
     apply_parser = sub.add_parser("apply")
     apply_parser.add_argument("--docx", type=Path, required=True)
     apply_parser.add_argument("--profile", type=Path)
+    apply_parser.add_argument("--pagination-mode", choices=("keep", "enter"), default="keep")
     check_parser = sub.add_parser("check")
     check_parser.add_argument("--docx", type=Path, required=True)
     check_parser.add_argument("--profile", type=Path)
     check_parser.add_argument("--word-pages", action="store_true")
+    check_parser.add_argument("--pagination-mode", choices=("keep", "enter"), default="keep")
     args = parser.parse_args(argv)
     profile = json.loads(args.profile.read_text("utf-8")) if args.profile else {}
-    if args.action == "apply":
-        report = apply_question_layout(args.docx, profile)
+    try:
+        if args.action == "apply":
+            report = apply_question_layout(args.docx, profile, args.pagination_mode)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 0
+        report = check_question_layout(args.docx, profile, args.pagination_mode)
+        if (args.word_pages or args.pagination_mode == "enter") and not report["findings"]:
+            report["word_pagination"] = check_word_pagination(args.docx, args.pagination_mode)
+            if report["word_pagination"]["status"] != "accepted":
+                report["status"] = "needs_layout_work"
         print(json.dumps(report, ensure_ascii=False, indent=2))
-        return 0
-    report = check_question_layout(args.docx, profile)
-    if args.word_pages and not report["findings"]:
-        report["word_pagination"] = check_word_pagination(args.docx)
-        if report["word_pagination"]["status"] != "accepted":
-            report["status"] = "needs_layout_work"
-    print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0 if report["status"] in {"ready_for_word_pagination_check", "accepted"} else 2
+        return 0 if report["status"] in {"ready_for_word_pagination_check", "accepted"} else 2
+    except Exception as exc:
+        print(json.dumps({"status": "failed", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

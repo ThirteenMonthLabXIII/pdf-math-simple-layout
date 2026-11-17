@@ -45,18 +45,25 @@ def prepare(args):
     default_profile = Path(__file__).resolve().parents[1] / "references" / "style_profile.json"
     profile_path = args.profile.resolve(strict=True) if args.profile else default_profile
     profile = json.loads(profile_path.read_text(encoding="utf-8")) if profile_path.is_file() else {}
+    pagination_mode = getattr(args, "pagination_mode", "keep")
+    if pagination_mode == "enter":
+        from enter_pagination import sanitize_working_copy
+        sanitize_working_copy(ws/"working.docx")
+        profile = {**profile, "allow_pagination_overrides": False}
     image_size_report = apply_docx_image_size_policy(
         ws/"working.docx", profile.get("image_size_policy")
     )
     style_report = apply_docx_styles(ws/"working.docx", profile)
-    question_layout_report = apply_question_layout(ws/"working.docx", profile)
+    question_layout_report = apply_question_layout(ws/"working.docx", profile, pagination_mode)
     question_layout_report["image_sizing"] = image_size_report
-    question_structure_check = check_question_layout(ws/"working.docx", profile)
+    question_structure_check = (question_layout_report["structural_check"] if pagination_mode == "enter"
+                                else check_question_layout(ws/"working.docx", profile))
     word_pagination_report = None
     word_pagination_error = None
     if question_structure_check["status"] == "ready_for_word_pagination_check":
         try:
-            word_pagination_report = check_word_pagination(ws/"working.docx")
+            word_pagination_report = (question_layout_report["word_pagination"] if pagination_mode == "enter"
+                                      else check_word_pagination(ws/"working.docx"))
         except Exception as exc:
             word_pagination_error = f"{type(exc).__name__}: {exc}"
     if question_layout_report["question_group_count"] == 0:
@@ -77,6 +84,7 @@ def prepare(args):
     save(ws/"style_policy.json", {
         "profile_path": str(profile_path) if profile_path.is_file() else None,
         "profile_sha256": sha(profile_path) if profile_path.is_file() else None,
+        "pagination_mode": pagination_mode,
         **style_report,
         "question_layout": question_layout_report,
     })
@@ -85,6 +93,7 @@ def prepare(args):
         "working_docx_sha256":sha(ws/"working.docx"),
         "style_policy_schema":style_report["schema"],
         "question_layout_schema":question_layout_report["schema"],
+        "pagination_mode":pagination_mode,
         "image_sizing_schema":image_size_report["schema"],
         "image_sizing_resized_count":image_size_report["resized_count"],
         "question_layout_preflight_status":preflight_status,
@@ -120,8 +129,9 @@ def audit(args):
     policy_data=json.loads((ws/"style_policy.json").read_text(encoding="utf-8"))
     profile_path=Path(policy_data["profile_path"]) if policy_data.get("profile_path") else None
     profile=json.loads(profile_path.read_text(encoding="utf-8")) if profile_path and profile_path.is_file() else {}
-    question_layout_report=check_question_layout(doc,profile)
-    word_pagination_report=check_word_pagination(doc) if args.word_pages else None
+    pagination_mode = policy_data.get("pagination_mode", m.get("pagination_mode", "keep"))
+    question_layout_report=check_question_layout(doc,profile,pagination_mode)
+    word_pagination_report=check_word_pagination(doc,pagination_mode) if args.word_pages else None
     checks={"source_unchanged":sha(Path(m["source_pdf"]))==m["source_sha256"],
         "source_page_count_matches":source_page_count_matches,
         "mineru_raw_unchanged":sha(ws/"mineru_original.docx")==m["raw_sha256"],
@@ -150,6 +160,7 @@ if __name__=="__main__":
     p=cmd.add_parser("prepare")
     p.add_argument("--pdf",type=Path,required=True);p.add_argument("--mineru-docx",type=Path,required=True)
     p.add_argument("--workspace",type=Path,required=True);p.add_argument("--profile",type=Path)
+    p.add_argument("--pagination-mode",choices=("keep","enter"),default="keep")
     p.set_defaults(f=prepare)
     a=cmd.add_parser("audit");a.add_argument("--workspace",type=Path,required=True)
     a.add_argument("--docx",type=Path);a.add_argument("--require-accepted",action="store_true");a.add_argument("--word-pages",action="store_true");a.set_defaults(f=audit)

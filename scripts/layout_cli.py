@@ -346,7 +346,7 @@ def set_paragraph(paragraph, typ, profile):
         f.space_after = Pt(profile["body_after_pt"])
 
 
-def make_document(data, profile: dict, result: Path, workdir: Path):
+def make_document(data, profile: dict, result: Path, workdir: Path, pagination_mode: str = "keep"):
     pdf = fitz.open(data["source_pdf"])
     doc = Document()
     section = doc.sections[0]
@@ -407,19 +407,25 @@ def make_document(data, profile: dict, result: Path, workdir: Path):
     pdf.close()
     result.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(result))
+    if pagination_mode == "enter":
+        from enter_pagination import sanitize_working_copy
+        sanitize_working_copy(result)
+        profile = {**profile, "allow_pagination_overrides": False}
     # Fix final figure dimensions once, before question grouping and Word pagination.
     image_size_report = apply_docx_image_size_policy(
         result, profile.get("image_size_policy")
     )
     style_report = apply_docx_styles(result, profile)
-    question_layout_report = apply_question_layout(result, profile)
+    question_layout_report = apply_question_layout(result, profile, pagination_mode)
     question_layout_report["image_sizing"] = image_size_report
-    structural_check = check_question_layout(result, profile)
+    structural_check = (question_layout_report["structural_check"] if pagination_mode == "enter"
+                        else check_question_layout(result, profile))
     word_pagination_report = None
     word_pagination_error = None
     if structural_check["status"] == "ready_for_word_pagination_check":
         try:
-            word_pagination_report = check_word_pagination(result)
+            word_pagination_report = (question_layout_report["word_pagination"] if pagination_mode == "enter"
+                                      else check_word_pagination(result))
         except Exception as exc:
             word_pagination_error = f"{type(exc).__name__}: {exc}"
     if question_layout_report["question_group_count"] == 0:
@@ -451,7 +457,8 @@ def cmd_build(args):
     output = (args.output or ws / "candidate.docx").resolve()
     if output.exists() and not args.overwrite:
         raise FileExistsError(f"Refusing to overwrite existing candidate: {output}; pass --output new_name.docx")
-    build_styles = make_document(data,profile,output,ws)
+    pagination_mode = getattr(args, "pagination_mode", "keep")
+    build_styles = make_document(data,profile,output,ws,pagination_mode)
     style_report = build_styles["style_policy"]
     question_layout_report = build_styles["question_layout"]
     ignored_source_page_breaks=sum(1 for page in data["pages"] for block in page["blocks"] if block.get("type")=="page_break")
@@ -460,6 +467,7 @@ def cmd_build(args):
             "image_sizing":build_styles["image_sizing"],
             "question_layout_preflight_status":question_layout_report["preflight_status"],
             "answer_space_policy":profile.get("answer_space_policy", {}),
+            "pagination_mode":pagination_mode,
             "ignored_source_page_breaks":ignored_source_page_breaks,
             "page_count":data["page_count"],"blocks":sum(len(p["blocks"]) for p in data["pages"]),"layout_errors":invalid,
             "unverified_pages":[p["page"] for p in data["pages"] if p.get("verified") is not True],"status":"candidate_not_approved"}
@@ -524,8 +532,9 @@ def cmd_audit(args):
     save(ws / "docx_layout_findings.json", docx_layout)
     layout_review = evaluate_layout_review(output, ws / "layout_review.json", docx_layout)
     build_report = load(ws / "build_report.json") if (ws / "build_report.json").exists() else {}
-    question_layout_report = check_question_layout(output, {"answer_space_policy": build_report.get("answer_space_policy", {})})
-    word_pagination_report = check_word_pagination(output) if getattr(args, "word_pages", False) else None
+    pagination_mode = build_report.get("pagination_mode", "keep")
+    question_layout_report = check_question_layout(output, {"answer_space_policy": build_report.get("answer_space_policy", {})}, pagination_mode)
+    word_pagination_report = check_word_pagination(output, pagination_mode) if getattr(args, "word_pages", False) else None
     source_unchanged=sha256(Path(data["source_pdf"]))==data["source_sha256"]
     checks={"source_unchanged":source_unchanged,"all_pages_have_content":not bad_layout,"all_source_pages_verified":not unverified,
             "all_expected_text_present":not missing,"all_table_values_present":not missing_tables,"figure_count_matches":exp_images==actual_images,
@@ -592,6 +601,7 @@ def main(argv=None):
     p=sub.add_parser("build",help="Build a Word candidate from verified/reviewable page blocks")
     p.add_argument("--workspace",required=True,type=Path);p.add_argument("--profile",type=Path);p.add_argument("--output",type=Path)
     p.add_argument("--allow-incomplete",action="store_true");p.add_argument("--overwrite",action="store_true")
+    p.add_argument("--pagination-mode",choices=("keep","enter"),default="keep")
     p.set_defaults(func=cmd_build)
     p=sub.add_parser("audit",help="Verify source, text, table, figures, and manually approved pages")
     p.add_argument("--workspace",required=True,type=Path);p.add_argument("--docx",type=Path);p.add_argument("--word-pages",action="store_true");p.set_defaults(func=cmd_audit)
