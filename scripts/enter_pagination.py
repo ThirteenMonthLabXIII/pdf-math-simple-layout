@@ -287,6 +287,41 @@ def _remove_marks(document, prefix):
             node.getparent().remove(node)
 
 
+def _relocate_bookmarks_from_special_paragraphs(document):
+    """Keep original bookmark markers out of paragraphs reserved for empty space."""
+    from question_layout import STYLE_NAMES
+
+    special_styles = {SPACER_STYLE, STYLE_NAMES["answer_blank"]}
+    marker_tags = {qn("w:bookmarkStart"), qn("w:bookmarkEnd")}
+    paragraphs = list(document.paragraphs)
+    special_indexes = [i for i, paragraph in enumerate(paragraphs)
+                       if paragraph.style.name in special_styles]
+    moved = 0
+
+    for index in reversed(special_indexes):
+        source = paragraphs[index]._p
+        markers = [child for child in list(source) if child.tag in marker_tags]
+        if not markers:
+            continue
+        target = next((p for p in paragraphs[index + 1:]
+                       if p.style.name not in special_styles), None)
+        if target is None:
+            target = next((p for p in reversed(paragraphs[:index])
+                           if p.style.name not in special_styles), None)
+        if target is None:
+            raise RuntimeError("bookmark_in_empty_paragraph_without_neighbor")
+
+        for marker in markers:
+            source.remove(marker)
+        target_p = target._p
+        offset = 1 if target_p.pPr is not None else 0
+        for marker in markers:
+            target_p.insert(offset, marker)
+            offset += 1
+        moved += len(markers)
+    return moved
+
+
 def _word():
     try:
         import win32com.client
@@ -429,6 +464,7 @@ def apply_enter_layout(path, profile=None):
 
         model = Document(str(marked))
         _remove_marks(model, prefix)
+        relocated_bookmark_markers = _relocate_bookmarks_from_special_paragraphs(model)
         model.save(str(working))
         structure = check_question_layout(working, profile, "enter")
         if structure["status"] != "ready_for_word_pagination_check":
@@ -450,7 +486,8 @@ def apply_enter_layout(path, profile=None):
                 os.unlink(temp_name)
         report.update({"candidate": str(path), "candidate_sha256": sha256(path),
                        "pagination": {"mode": "enter", "inserted_page_spacers": inserted,
-                                      "replaced_prior_page_spacers": old_spacers},
+                                      "replaced_prior_page_spacers": old_spacers,
+                                      "relocated_bookmark_markers": relocated_bookmark_markers},
                        "removed_source_page_controls": removed,
                        "structural_check": structure, "word_pagination": actual})
         report["structural_check"]["candidate"] = str(path)

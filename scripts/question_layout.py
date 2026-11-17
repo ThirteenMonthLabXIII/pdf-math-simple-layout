@@ -561,6 +561,13 @@ def check_question_layout(docx_path: Path, profile: dict | None = None,
     if pagination_mode == "enter":
         from enter_pagination import find_forbidden_controls
         findings.extend(find_forbidden_controls(document))
+        for block_number, paragraph in enumerate(document.paragraphs):
+            if (paragraph.style.name == "SIJI Enter Page Spacer"
+                    and any(child.tag != qn("w:pPr") for child in paragraph._p)):
+                findings.append({
+                    "code": "page_spacer_not_empty_enter_paragraph",
+                    "block": block_number,
+                })
     elif pagination_mode != "keep":
         raise ValueError(f"Unknown pagination mode: {pagination_mode}")
     total_required = 0
@@ -587,6 +594,26 @@ def check_question_layout(docx_path: Path, profile: dict | None = None,
             if (_effective_indent_twips(question_paragraph, "left_indent") != 0
                     or _effective_indent_twips(question_paragraph, "first_line_indent") != 0):
                 findings.append({"code": "question_start_not_flush_left", "group": group_number})
+            if effective_numbering(question_paragraph) is not None:
+                findings.append({
+                    "code": "question_start_automatic_numbering",
+                    "group": group_number,
+                })
+            label = re.match(
+                r"^(?:[0-9]+[.．、)）]|[（(][0-9]+[）)])",
+                question_paragraph.text,
+            )
+            if label:
+                remainder = question_paragraph.text[label.end():]
+                single_space = remainder.startswith(" ") and (
+                    len(remainder) == 1 or not remainder[1].isspace()
+                )
+                if remainder and not single_space:
+                    findings.append({
+                        "code": "question_label_spacing_not_single_space",
+                        "group": group_number,
+                        "label": label.group(),
+                    })
 
         segments = _answer_segments(blocks, group, policy)
         for segment in segments:

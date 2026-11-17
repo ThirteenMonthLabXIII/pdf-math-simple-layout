@@ -28,6 +28,7 @@ GPT 与 Codex 均可按当前任务选择已登录的 MinerU 网页或本机 API
 | 方格只有横线、竖线消失 | [表格边框](docs/TROUBLESHOOTING.md#borders) |
 | 选项图片大小不同、缺少 A–D 或排列错乱 | [选项图重建](docs/TROUBLESHOOTING.md#diagram-options) |
 | 答题空段跨页、题组或标题被拆开 | [实际分页](docs/TROUBLESHOOTING.md#pagination) |
+| 目录逐行居中或数字题号后间距异常 | [练习工作流](docs/EXERCISE_WORKFLOW.md) |
 | 插入空段后题干和小问顺序颠倒 | [插入方向](docs/TROUBLESHOOTING.md#insert-order) |
 | 为凑页把月历或其他图表压得太小 | [图表尺寸](docs/TROUBLESHOOTING.md#calendar-size) |
 | 审计找不到表格文字，上标被读成普通数字 | [结构与渲染核验](docs/TROUBLESHOOTING.md#audit-text) |
