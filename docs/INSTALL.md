@@ -10,4 +10,4 @@ py -3 -m venv .venv
 
 Use MinerU's separate web UI or a supported local MinerU renderer to export the full PDF as editable DOCX. The public Skill does not include or install MinerU. rapidocr-onnxruntime is used for the local OCR fallback only.
 
-To let Codex discover it automatically, link or copy this repository into your Codex skill discovery directory (often under ~/.agents/skills/). The agent may need a new conversation to discover a newly added skill.
+On this PC the canonical skill is D:\CHATGPT\skills\pdf-math-simple-layout; its Codex discovery entry is a link to that same directory. On other installations link the discovery entry to the canonical directory so updates are not split between copies.

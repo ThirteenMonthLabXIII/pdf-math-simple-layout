@@ -1,86 +1,41 @@
-# layout.json 编辑说明
+# RapidOCR 与 layout.json
 
-本路线与 MinerU 共用图片尺寸生产规则。RapidOCR build 会在题目规划和 Word 分页之前调用 scripts/image_sizing.py；同讲小图（宽度大于0且不超过6.0 cm）的中位数作为参照，超过6.0 cm的图片首次生成时缩到该中位数；无同讲参照时用整份文档中位数，无全局参照时用4.05 cm。只缩小、不放大，保持宽高比，不重采样图片素材。不要在终稿阶段另开图片缩放返工。
+仅在完整 MinerU DOCX 不可用时使用。先读 [练习工作流](EXERCISE_WORKFLOW.md)，并检查用户是否禁止段落分页属性；默认 `build` 会写分页链，此时不能直接运行，须按练习工作流的 Enter 分支规划和预检。
 
-只有编辑过程中新增或替换了图片，才在下一次题目规划前对更新后的工作稿应用同一规则一次；纯文字修改不触发图片处理。
+~~~powershell
+$py = 'D:\我的python\python3.12\python.exe'
+& $py scripts\layout_cli.py prepare --pdf 'input.pdf' --output 'fallback_job'
+& $py scripts\layout_cli.py recognize --workspace 'fallback_job'
+# 对照原 PDF 修订 fallback_job\layout.json 后：
+& $py scripts\layout_cli.py build --workspace 'fallback_job' --profile 'references\style_profile.json'
+~~~
 
-`prepare` 自动产生 `layout.json`，是所有任务的单一结构真源；`source_sha256` 与 PDF 来源绑定。识别后每页 `blocks` 是数组，按原稿内容顺序排列，不要通过全局重排题号来掩盖缺失。
+`layout.json` 是源页与内容块清单，`source_sha256` 绑定源 PDF。块按源稿顺序记录：
 
-## 块格式
-
-```json
+~~~json
 {
   "page": 2,
   "verified": false,
   "blocks": [
-    {"type": "heading", "text": "【例题 1】平行与相似"},
-    {"type": "question", "text": "1．如图，在△ABC中，……"},
+    {"type": "heading", "text": "【例题 1】"},
+    {"type": "question", "text": "1．如图，……"},
     {"type": "image", "bbox": [60, 125, 290, 230], "caption": ""},
     {"type": "subquestion", "text": "（1）求证：……"},
-    {"type": "table", "rows": [["项目", "数据"], ["甲", "3"]]}
+    {"type": "table", "rows": [["项目", "数据"], ["甲", "3"]]},
+    {"type": "blank", "count": 3}
   ]
 }
-```
-
-- 文本块：`title`、`heading`、`question`、`subquestion`、`paragraph`、`math`。文本含真实原文，Unicode可编辑。
-- `image`：`bbox=[左,上,右,下]`，PDF点为单位；`dpi` 默认260，可在块中设300+。从源PDF图像直接采样；图中文字跟图片一起保留。
-- `table`：Word原生表格，行列可以不等长但必须非空。
-- `blank`：例如 `{"type":"blank","count":3}`，插入 3 个空段落作为做题或分页空间；count 可为 1–100，默认 1。
-- 源页确实没有正文时，目视核对后可设置 `source_blank: true` 并手动标记 verified；不要为让审计通过而虚构题目。只有空段落、没有源内容的页面仍须标记为真实空白页。
-- `page_break`：仅当前用户明确要求手动分页符时使用；默认用空段落，不因原 PDF 翻页或章节而强加分页符。
-- `verified`：只在**逐页对照源稿并逐题核实**后标真。
-
-`visual_review.json` 中每个实际源页必须恰有一条记录，页号不可重复、漏项或越界；每条记录的四项人工检查都必须为布尔值 `true`。MinerU 审计同样要求每一源页恰好一条完整核验记录。不要通过重复记录凑足页数。
-
-## 容易犯错的地方
-
-1. OCR会把 `∠` 识别成 `<`，把 `△` 识别成 `A`，把 `∥` 识别成数字11，把 `′`/`−`/`~` 混淆。每页核对数学符号和图内小字。
-2. 题号“1、/1．”、分项“（1）”、括号和分式位置按老师样例和原稿保留；不能因为系统识别文本段落错误就合并两道题。
-3. 原PDF的页脚页码如“71、72、73…”可能是扫描版教材页码，可不保留到Word正文，但必须确认不是题目编号；不要删除章节标题或图注。
-4. 一道题若题干文字环绕图形，裁剪框不能混入要转换的正文；图形必须在对应题文附近。
-5. OCR低置信度不是唯一危险。高置信度也可能错；公式的等号、分数、特殊符号必须对照图片。
-6. Word页码和PDF页码可能不同；逐页审查按题号/短语/图片锚点追踪，不能靠同页码判错或判对。
-
-## 验收字段
-
-`visual_review.json` 包含 `candidate_sha256` 和每一页四个布尔字段。只有实际核对后才填真：
-- `source_checked`：检查原始扫描页和所有内容。
-- `output_checked`：实际看过Word候选渲染，并能定位全部对应题目。
-- `text_math_checked`：文字、数字、公式、选项逐项核对。
-- `figures_checked`：图形及图注对应、清晰、无截断。
-
-Word内容有修改后必须清除旧的批准记录/更新哈希重新看图，不得复制旧记录冒充验收。
-
-
-## Preventive Word style contract (applies before content editing)
-
-The DOCX must be preformatted BEFORE Codex begins editing. Do not rely on a final scan to repair a bad layout.
-
-- MinerU route: mineru_handoff.py prepare copies the raw export to mineru_original.docx, then applies docx_styling.apply_docx_styles to working.docx using references/style_profile.json or a profile extracted from the teacher sample.
-- RapidOCR route: layout_cli.py build applies the same style contract to the generated candidate before it is opened for review.
-- The contract creates SIJI Body, SIJI Title, SIJI Heading, SIJI Question, SIJI Subquestion, SIJI Formula, SIJI AnswerBlank, SIJI Caption, and SIJI Figure paragraph styles. Each style explicitly owns left/right/first-line indent, paragraph spacing, line spacing, and alignment.
-- Formula paragraphs start with zero left/right/first-line indent. The source DOCX's direct paragraph indents are cleared in the working copy before editing; a 1687-twip source formula indent therefore never becomes the working formula style.
-- Subquestion indentation is a controlled hierarchy value (600 twips by default). If a teacher sample is provided, the profile extractor learns its median per-kind paragraph settings. Any sample paragraph carrying an indent above 1000 twips is excluded from learning, so an anomalous formula does not contaminate the style profile.
-- Codex must reuse the named styles for every inserted paragraph. Never set paragraph_format.left_indent, right_indent, first_line_indent, space_before, space_after, or line_spacing ad hoc. Never paste paragraph formatting from the raw MinerU export.
-- Answer blank text is content, not layout decoration. Preserve the exact parentheses and spaces from the source PDF. Do not run global whitespace normalization, strip() on source text, or replace repeated spaces. The style pass changes paragraph/run formatting only and leaves text and OfficeMath XML unchanged.
-- Word gray dots, return arrows and tab arrows are nonprinting formatting marks. They are not characters in the document text; do not delete or insert text to address their on-screen display.
-
-The final layout scanner remains a last-resort regression gate. It should find no introduced anomaly because the working document was built from the style contract first.
-
-## Word paragraph-layout regression check (MinerU and RapidOCR)
-
-After the final DOCX save and before audit, run:
-
-~~~powershell
-python scripts/docx_layout_check.py check --docx "job1/working.docx" --output "job1/docx_layout_findings.json"
-python scripts/docx_layout_check.py template --docx "job1/working.docx" --output "job1/layout_review.json"
 ~~~
 
-The scanner flags direct paragraph properties and inherited paragraph-style properties:
-- w:ind left/right/first-line/hanging values above 1000 twips (50 pt); formula paragraphs containing m:oMath / m:oMathPara get a dedicated finding. The regression case that motivated this check had a 1687-twip left indent that pushed a formula rightward.
-- w:spacing before/after values above 720 twips (36 pt).
-- Three or more consecutive spaces inside answer parentheses.
+- 文本类型包括 `title`、`heading`、`question`、`subquestion`、`paragraph`、`math`；图的 `bbox` 使用 PDF 点坐标，默认 260 dpi，可按需提高。表格的行列非空。
+- `blank` 的 count 为 1–100，表示相同数量的真实空段。只有目视确认无正文的源页才能标记 `source_blank: true`。原 PDF 页边界不是 Word 分页符；用户明确要求时才使用 `page_break`。
+- OCR 可能混淆 `∠` / `<`、`△` / `A`、`∥` / `11`，以及撇号和负号。逐项对照原图，不凭置信度或同页码判断正确；图形裁切不能混入正文。
 
-Compare every finding with the source PDF and neighbouring questions. A 600-twip nested-question indent may be correct; do not normalize every paragraph or delete blank paragraphs in bulk. Gray dots, return arrows and tab arrows in Word are normally nonprinting formatting marks; hide them or inspect the exported PDF before treating them as real characters.
+标准 build 必须报告 `ready_for_content_review` 才能进入内容审核。数学表达式须变成可编辑公式并对照源稿。按练习工作流渲染并逐页核对；`visual_review.json` 对每个真实源页恰有一条记录，四项检查均须实际完成后标真。最终哈希变化时重新核对受影响部分，再运行：
 
-After fixing issues, save and rerun both commands. layout_review.json must match the current DOCX SHA-256, have checked=true and a reviewer. Any remaining intentional finding must include disposition=intentional, a reason, and source_pdf_checked=true. Both audit routes require this review; any later DOCX edit invalidates the review hash.
+~~~powershell
+& $py scripts\layout_cli.py render --docx 'fallback_job\candidate.docx' --output 'fallback_job\word_preview'
+& $py scripts\layout_cli.py audit --workspace 'fallback_job' --docx 'fallback_job\candidate.docx' --word-pages
+~~~
+
+将示例 DOCX 路径替换为 build 实际输出。不要虚填审核字段，或把 OCR 审计结果当成逐页人工核对。

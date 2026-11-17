@@ -1,110 +1,33 @@
-# MinerU-first PDF-to-Word handoff
+# MinerU 转换与 Word 交接
 
-Set the Python executable once:
+先读 [练习工作流](EXERCISE_WORKFLOW.md)。GPT 默认使用本机 MinerU API；Codex 默认使用当前对话侧边栏已登录网页。两者都可根据任务直接选择网页或 API。网页预计排队超过 120 秒、连续 60 秒无进展、卡住或登录态不可用时切换 API；已有完整导出时不重复转换。网页操作见 [CODEX_DIRECT.md](CODEX_DIRECT.md)，API 和任务恢复见 [MINERU_API.md](MINERU_API.md)。
+
+在 Skill 根目录选择预装默认样式；有教师样例时按 [样例说明](REFERENCE.md) 生成临时 profile。以下路径按实际文件替换：
 
 ~~~powershell
 $py = 'D:\我的python\python3.12\python.exe'
+$profile = 'references\style_profile.json'
+& $py scripts\mineru_handoff.py prepare --pdf 'input.pdf' --mineru-docx 'mineru.docx' --workspace 'job1' --profile $profile
 ~~~
 
-1. Read [EXERCISE_WORKFLOW.md](EXERCISE_WORKFLOW.md). Before drafting, map each source page, full question, subquestion and its figures. **GPT and Codex have equal permission to use MinerU web and local API/Token; only their default priority differs**:
-   - GPT normally uses the local MinerU API; it may also use a logged-in web session.
-   - Codex normally opens the already-logged-in MinerU page in the browser attached to the **current Codex conversation's own sidebar**. This web route needs no Token.
-   - If the web queue is estimated above 120 seconds, has no progress for 60 seconds, hangs, is not logged in or is unavailable, use the local API immediately. Codex may also choose the local API from the start; there is **no special permission gate**.
-   - For API usage read [MINERU_API.md](MINERU_API.md), which uses scripts/mineru_entry.py to delegate to the existing MinerU API implementation. Both routes produce the same complete editable MinerU DOCX; continue to the exact same prepare step below.
+标准 prepare 保留原始导出、建立工作稿，依次应用图片尺寸、受控段落样式、题组和 Enter 空段，建立整题同页链并运行真实 Word 分页预检。`question_layout_plan.json` 记录规划和预检结果。
 
-2. Select the paragraph-style profile BEFORE preparing the handout. Keep the bundled defaults unless a teacher sample is provided:
+仅在输出 `ready_for_codex_formatting` 后编辑题目内容。`needs_question_mapping`、`needs_question_layout`、`needs_question_page_fit` 或 `needs_word_pagination_check` 分别表示需要补题组映射、修复结构、调整题组高度或恢复 Word 分页检查；修好后再预检。用户禁止段落分页属性时，**不要运行上面的 prepare**，改走 [Enter 分页分支](EXERCISE_WORKFLOW.md#用户禁止段落分页或换行设置时)。
+
+复用已有 SIJI 样式；保留公式节点和原有空格。仅当编辑新增、删除或调整题目/小问结构时重新运行规划器；新增或替换图片时先按练习工作流处理尺寸。标准路线：
 
 ~~~powershell
-$profile = "references\style_profile.json"
-if (Test-Path "teacher-sample.docx") {
-    $profile = Join-Path $env:TEMP "pdf-math-style-profile.json"
-    & $py scripts\layout_cli.py profile --sample "teacher-sample.docx" --output $profile
-}
+& $py scripts\question_layout.py apply --docx 'job1\working.docx' --profile $profile
+& $py scripts\question_layout.py check --docx 'job1\working.docx' --profile $profile --word-pages
 ~~~
 
-The extractor learns margins, fonts, line spacing, question hierarchy, and paragraph alignment. Sample indents above 1000 twips are rejected instead of copied into the new document. The teacher sample cannot override the flush-left question-start style or the Enter-only answer-space rule. If no sample is provided, use references/style_profile.json.
-
-3. Prepare the MinerU output. This automatically preserves a raw copy, applies the image-size policy to the working copy, applies the SIJI styles, and plans answer space and question pagination BEFORE Codex edits the document. Image sizing runs before the question planner and Word pagination preflight; its result is included in question_layout_plan.json and the prepare output.
-
-With a teacher sample:
+标准路线在完成编辑后渲染、按源页清单逐页核对，再对实际候选稿审计：
 
 ~~~powershell
-& $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1" --profile $profile
+& $py scripts\layout_cli.py render --docx 'job1\working.docx' --output 'job1\word_preview'
+& $py scripts\docx_layout_check.py check --docx 'job1\working.docx' --output 'job1\docx_layout_findings.json'
+& $py scripts\docx_layout_check.py template --docx 'job1\working.docx' --output 'job1\layout_review.json'
+& $py scripts\mineru_handoff.py audit --workspace 'job1' --docx 'job1\working.docx' --require-accepted --word-pages
 ~~~
 
-Without a teacher sample:
-
-~~~powershell
-& $py scripts\mineru_handoff.py prepare --pdf "input.pdf" --mineru-docx "mineru.docx" --workspace "job1" --profile $profile
-~~~
-
-The untouched export remains mineru_original.docx. Codex edits working.docx. The prepare step:
-- applies the shared image-size policy: per-lecture median of existing images up to 6.0 cm; images wider than 6.0 cm shrink to that median; document-wide median fallback; 4.05 cm final fallback; aspect ratio and image bytes preserved;
-- detects each full question group, including its heading, number, stem, subquestions, formulas, options, figures, tables and captions;
-- adds answer space using genuinely empty Word paragraphs (one Enter paragraph per writing line);
-- gives each independent subquestion its own answer budget; big-question space grows with the number and complexity of its subquestions;
-- uses the SIJI Question Start style for a flush-left question label;
-- applies keep-together/keep-with-next only to bind the whole question and its answer paragraphs to one page;
-- removes source manual page breaks/pageBreakBefore so the new Word pagination can flow naturally;
-- runs a structural check and real Microsoft Word pagination preflight before it allows content editing;
-- writes question_layout_plan.json, including the preflight result, and the applied rules/hashes to style_policy.json.
-
-Only continue when prepare reports ready_for_codex_formatting. If it reports needs_question_mapping, needs_question_layout, needs_question_page_fit or needs_word_pagination_check, stop before content editing. Manually classify missed question stems/subquestions, tighten only redundant text spacing inside an oversized question, or restore Word COM, then rerun prepare and require a clean preflight. Its image dimensions have already been decided by the first-build policy; do not start a post-pagination image-resize pass.
-
-4. Only after preformatting and question planning, edit content in working.docx. Reuse the prepared styles:
-   - SIJI Body
-   - SIJI Question Start
-   - SIJI Question
-   - SIJI Subquestion
-   - SIJI Formula
-   - SIJI AnswerBlank
-   - SIJI Heading
-   - SIJI Title
-   - SIJI Caption
-   - SIJI Figure
-
-Do not manually assign paragraph indents or spacing. Do not copy paragraph formatting from the raw MinerU DOCX. Do not globally trim, collapse, or replace spaces. Preserve answer parentheses and their exact source spacing; correct text only against the PDF. Inline formulas stay in their question/body paragraph; standalone OfficeMath paragraphs use SIJI Formula.
-
-When content editing adds, removes or restructures questions/subquestions, rerun the question planner before rendering. This is a normal layout-generation step for the changed content, not a repair-after-failure step. Text-only edits do not rerun image sizing; if a figure is added or replaced, apply scripts/image_sizing.py once to the updated working DOCX before rerunning the question planner:
-
-~~~powershell
-& $py scripts\question_layout.py apply --docx "job1\working.docx" --profile $profile
-& $py scripts\question_layout.py check --docx "job1\working.docx" --profile $profile
-~~~
-
-Do not create answer space manually with Shift+Enter, underscores, borders, tabs, tables, shapes or paragraph spacing. Do not insert manual page breaks. If the last question cannot fit with all its answer space, the whole question group moves to the next page. If a question is taller than a page, compact inside that group; if it still cannot fit, stop and report it as blocked rather than splitting it.
-
-5. Render and inspect the output using Microsoft Word:
-
-~~~powershell
-& $py scripts\layout_cli.py render --docx "job1\working.docx" --output "job1\word_preview"
-~~~
-
-6. Check actual Word pagination and question answer space. Every group must fit on one page; page-opening question labels must be flush left:
-
-~~~powershell
-& $py scripts\question_layout.py check --docx "job1\working.docx" --profile $profile --word-pages
-~~~
-
-A split group, insufficient answer space, non-Enter blank, missing pagination chain or non-flush question start blocks delivery.
-
-7. Run the paragraph-layout regression gate:
-
-~~~powershell
-& $py scripts\docx_layout_check.py check --docx "job1\working.docx" --output "job1\docx_layout_findings.json"
-& $py scripts\docx_layout_check.py template --docx "job1\working.docx" --output "job1\layout_review.json"
-~~~
-
-The scanner checks direct and inherited style indents, paragraph spacing, and answer-parenthesis spacing. Inspect every finding against the source PDF. A 600-twip subquestion indent may be intentional. Do not zero all indents or bulk-delete answer paragraphs. Gray dots and return arrows in Word are usually nonprinting formatting marks; verify with marks hidden or the exported PDF before editing them. If a finding is intentional, record the reason and source_pdf_checked=true in layout_review.json. The review file is bound to the final DOCX hash.
-
-8. Compare every original PDF page with the corresponding content in the rendered Word pages. Update mineru_review.json only after checking content, formulas, figures and page starts. Set word_preview_checked=true only after reviewing all output pages, and set candidate_sha256 to the actual final DOCX hash.
-
-9. Audit:
-
-~~~powershell
-& $py scripts\mineru_handoff.py audit --workspace "job1" --docx "job1\working.docx" --require-accepted --word-pages
-~~~
-
-Never deliver an unreviewed DOCX. OCR confidence is not proof of formula correctness; review mathematical symbols and diagrams against the source images. The real Word pagination check must report zero split question groups.
-
-MinerU is developed independently and is not included in this repository. If MinerU is unavailable, see the RapidOCR fallback instructions in SKILL.md. If a task requires genuine AxMath objects, use a separately maintained AxMath conversion workflow.
+仅在实际核对后填写 `mineru_review.json` 的当前 DOCX 哈希、`word_preview_checked` 与每个源页三项检查；`layout_review.json` 填写当前哈希、`checked`、审阅者，并为保留的发现记录 `intentional`、原因和已核对源稿。审计警告必须保留并对照源稿处理，不能通过虚填消除。用户禁止分页属性时，默认结构审计仍要求分页链；保留它的原始结果，并按 Enter 分支记录实际 Word 分页和属性检查，不伪造 `accepted`。
