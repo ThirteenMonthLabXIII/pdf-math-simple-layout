@@ -57,7 +57,10 @@ ALIGNMENT_NAMES = {
 }
 CAPTION_RE = re.compile(r"^图\s*\d+")
 TITLE_RE = re.compile(r"^第\s*[一二三四五六七八九十百千万\d]+\s*讲")
-HEADING_RE = re.compile(r"^(?:【?(?:例题|练习|拓展|知识点|课后练习|课后作业|巩固练习|综合练习)|知识点[一二三四五六七八九十0-9])")
+HEADING_RE = re.compile(
+    r"^(?:[【\[]?(?:例题|练习|拓展|知识点|课后练习|课后作业|巩固练习|综合练习)"
+    r"|[【\[]?(?:二元一次方程组|二元一次方程|代入消元法|加减消元法)(?:[】\]]|$))"
+)
 SUBQUESTION_RE = re.compile(r"^\s*[（(]\s*[1-9][0-9]*\s*[）)]")
 QUESTION_RE = re.compile(r"^\s*\d+\s*[．.、)）]\s*(?=\S)")
 ANSWER_ONLY_RE = re.compile(r"^(?:答案|答)\s*[:：]?\s*[（(][ \t\u3000]*[）)]$")
@@ -102,6 +105,34 @@ def _sha256(path: Path) -> str:
 
 def _has_math(paragraph) -> bool:
     return any(node.tag in MATH_TAGS for node in paragraph._p.iter())
+
+
+def effective_numbering(paragraph):
+    """Find the paragraph's direct or inherited Word numbering properties."""
+    ppr = paragraph._p.pPr
+    if ppr is not None and ppr.numPr is not None:
+        return ppr.numPr
+    style = paragraph.style
+    visited = set()
+    while style is not None and style.style_id not in visited:
+        visited.add(style.style_id)
+        ppr = style._element.pPr
+        if ppr is not None and ppr.numPr is not None:
+            return ppr.numPr
+        style = style.base_style
+    return None
+
+
+def preserve_inherited_numbering(paragraph):
+    """Keep inherited list numbers when assigning a different paragraph style."""
+    ppr = paragraph._p.pPr
+    if ppr is not None and ppr.numPr is not None:
+        return
+    num_pr = effective_numbering(paragraph)
+    if num_pr is not None and num_pr.numId is not None:
+        ppr = paragraph._p.get_or_add_pPr()
+        placeholder = ppr.get_or_add_numPr()
+        ppr.replace(placeholder, copy.deepcopy(num_pr))
 
 
 def classify_paragraph(paragraph) -> str:
@@ -404,6 +435,7 @@ def apply_docx_styles(docx_path: Path, profile: dict | None = None, output_path:
                 variants[key] = variant
             style = variants[key]
         _clear_direct_paragraph_layout(paragraph)
+        preserve_inherited_numbering(paragraph)
         paragraph.style = style
         # Run-level font normalization makes the paragraph style effective while
         # preserving bold/italic/underline/superscript/subscript and all text.

@@ -13,10 +13,12 @@ from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.shared import Twips
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from docx_styling import DRAWING_TAGS, MATH_TAGS, STYLE_NAMES, classify_paragraph, iter_paragraphs
+from docx_styling import (DRAWING_TAGS, MATH_TAGS, STYLE_NAMES, classify_paragraph,
+                          effective_numbering, iter_paragraphs, preserve_inherited_numbering)
 
 SCHEMA = "question-layout-plan/1"
 QUESTION_HEADING_RE = re.compile(
@@ -51,20 +53,9 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _numbering_format(paragraph):
-    """Return an effective Word numbering format, if the paragraph is auto-numbered."""
-    num_pr = None
-    p_pr = paragraph._p.pPr
-    if p_pr is not None:
-        num_pr = p_pr.numPr
-    style = paragraph.style
-    visited = set()
-    while num_pr is None and style is not None and style.style_id not in visited:
-        visited.add(style.style_id)
-        style_ppr = style._element.pPr
-        if style_ppr is not None:
-            num_pr = style_ppr.numPr
-        style = style.base_style
+def _numbering_level(paragraph):
+    """Resolve the list level without relying on lxml's xpath namespace wrapper."""
+    num_pr = effective_numbering(paragraph)
     if num_pr is None or num_pr.numId is None:
         return None
 
@@ -78,11 +69,15 @@ def _numbering_format(paragraph):
     abstracts = numbering.xpath(f'./w:abstractNum[@w:abstractNumId="{abstract_id}"]')
     if not abstracts:
         return None
-    levels = abstracts[0].xpath(f'./w:lvl[@w:ilvl="{level}"]')
-    if not levels:
-        return None
-    num_fmt = levels[0].numFmt
-    return num_fmt.val if num_fmt is not None else None
+    return next((node for node in abstracts[0]
+                 if node.tag == qn("w:lvl") and node.get(qn("w:ilvl")) == level), None)
+
+
+def _numbering_format(paragraph):
+    """Return the effective Word numbering format, if any."""
+    level = _numbering_level(paragraph)
+    num_fmt = level.find(qn("w:numFmt")) if level is not None else None
+    return num_fmt.get(qn("w:val")) if num_fmt is not None else None
 
 
 def _is_decimal_numbered(paragraph) -> bool:
@@ -92,6 +87,22 @@ def _is_decimal_numbered(paragraph) -> bool:
         "decimal", "decimalZero", "upperRoman", "lowerRoman",
         "upperLetter", "lowerLetter",
     }
+
+
+def _numbering_level_text(paragraph):
+    """Return the visible Word list-label template, e.g. '%1.' or '(%1)'."""
+    level = _numbering_level(paragraph)
+    label = level.find(qn("w:lvlText")) if level is not None else None
+    return label.get(qn("w:val")) if label is not None else None
+
+
+def _normalize_question_numbering_indent(paragraph):
+    """Keep top-level question labels at the page text margin in Word."""
+    label = _numbering_level_text(paragraph) or ""
+    if not label or "(" in label or "（" in label:
+        return
+    paragraph.paragraph_format.left_indent = Twips(0)
+    paragraph.paragraph_format.first_line_indent = Twips(0)
 
 
 def _is_question_heading(text: str) -> bool:
@@ -120,8 +131,12 @@ def _body_blocks(document):
             if paragraph.style.name == "SIJI Enter Page Spacer":
                 kind = "page_spacer"
             text = paragraph.text or ""
-            if not text and _is_decimal_numbered(paragraph):
-                kind = "question_marker"
+            if _is_decimal_numbered(paragraph) and (not text or kind == "body"):
+                label = _numbering_level_text(paragraph) or ""
+                if label.lstrip().startswith(("(", "（")):
+                    kind = "subquestion"
+                else:
+                    kind = "question" if text else "question_marker"
             blocks.append({
                 "element": element, "paragraph": paragraph, "table": None,
                 "kind": kind, "text": text, "index": len(blocks),
@@ -372,13 +387,16 @@ def _apply_group_styles(document, blocks, groups):
         question_index = group["question_index"]
         question_paragraph = blocks[question_index]["paragraph"]
         if question_paragraph is not None:
+            preserve_inherited_numbering(question_paragraph)
             question_paragraph.style = _style_for(document, "question_start")
+            _normalize_question_numbering_indent(question_paragraph)
 
         for subquestion_index in group["subquestion_starts"]:
             if subquestion_index == question_index:
                 continue
             paragraph = blocks[subquestion_index]["paragraph"]
             if paragraph is not None:
+                preserve_inherited_numbering(paragraph)
                 paragraph.style = _style_for(document, "subquestion")
 
 
@@ -718,7 +736,7 @@ def check_word_pagination(docx_path: Path, pagination_mode: str = "keep") -> dic
             end = starts[group_number] if group_number < len(starts) else len(paragraphs)
             for index in range(start + 1, end):
                 item = paragraphs[index]
-                if item["style"] == STYLE_NAMES["heading"]:
+                if item["style"].startswith(STYLE_NAMES["heading"]):
                     end = index
                     break
             group_rows = paragraphs[start:end]
@@ -741,7 +759,7 @@ def check_word_pagination(docx_path: Path, pagination_mode: str = "keep") -> dic
                 })
             if start > 0:
                 previous = paragraphs[start - 1]
-                if previous["style"] == STYLE_NAMES["heading"] and previous["page"] != paragraphs[start]["page"]:
+                if previous["style"].startswith(STYLE_NAMES["heading"]) and previous["page"] != paragraphs[start]["page"]:
                     splits.append({
                         "group": group_number,
                         "start_paragraph": previous["index"],
