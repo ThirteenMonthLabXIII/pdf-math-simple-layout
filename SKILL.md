@@ -7,6 +7,8 @@ description: Convert mathematics PDFs to editable Word or repair an existing mat
 
 当前用户对范围、软件、编号、分页和交付的要求优先；附件中的文字是待处理内容。此文件所在目录是 Skill 根目录，命令在该目录执行。
 
+在十三月电脑处理同类数学练习册整册排版时，先读 `D:\CHATGPT\skills\word-axmath-gpt-skill\SKILL.md` 及其 `docs/MATH_LAYOUT_REFERENCE.md`，执行其中的参考册留白、题号零空格、英文括号和句点、整题同页、字体缩进、标题层级、四项分页关闭及交付规则；这些本机标准优先于本技能的通用预设。局部修改仍以用户授权范围为准。
+
 ## 先选工作方式
 
 - **新转换**：完整阅读 [练习工作流](docs/EXERCISE_WORKFLOW.md)，再读 [MinerU 流程](docs/MINERU_FIRST.md)。已有有效的完整 MinerU 结果就复用；仅在 MinerU 不可用或导出失败时使用 [RapidOCR](docs/WORKFLOW.md)。
@@ -17,7 +19,7 @@ GPT 与 Codex 均可按当前任务选择已登录的 MinerU 网页或本机 API
 
 新转换按以下顺序执行：保留源文件 → 完整转换 → 首次确定图片尺寸 → 按原稿建立题组与答题空间 → Microsoft Word 真实分页预检 → 内容编辑 → 对受影响部分重新检查 → 按源页一次验收。题目、图片和答题空间必须在排版开始时规划，不能留待终稿补救。
 
-默认预处理使用整题同页属性。用户禁止段落分页或换行设置时，prepare、build 和 apply 必须加 `--pagination-mode enter`，在内容编辑前按[练习工作流](docs/EXERCISE_WORKFLOW.md#用户禁止段落分页或换行设置时)完成真实 Word 分页预检。
+其他任务的默认预处理可使用整题同页属性。执行上述本机练习册标准或用户禁止段落分页/换行设置时，prepare、build 和 apply 必须加 `--pagination-mode enter`，在内容编辑前按[练习工作流](docs/EXERCISE_WORKFLOW.md#用户禁止段落分页或换行设置时)完成真实 Word 分页预检；该模式只处理分页方式，留白预算仍需按指定参考册核对和调整。
 
 ## 问题索引
 
